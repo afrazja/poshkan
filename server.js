@@ -328,7 +328,7 @@ async function historyHandler(req, res) {
       : `range=${config.range}&interval=${config.interval}`;
     const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
       symbol
-    )}?${chartParams}&includePrePost=true`;
+    )}?${chartParams}&includePrePost=false`;
     const data = await fetchJson(endpoint);
     const result = data?.chart?.result?.[0];
     const timestamps = result?.timestamp || [];
