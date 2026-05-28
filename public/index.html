@@ -3,16 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Stock Monitor Dashboard</title>
+    <title>Poshkan</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
       <section id="auth-panel" class="auth-panel" aria-live="polite">
-        <div>
-          <p class="eyebrow">Poshkan access</p>
-          <h1>Sign in to continue</h1>
-          <p>Use your account to save watchlists, paper trades, and alerts in the cloud.</p>
+        <div class="auth-brand">
+          <div class="brand-lockup">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <div>
+              <p class="brand-kicker">Virtual market lab</p>
+              <h1>Poshkan</h1>
+            </div>
+          </div>
+          <p>Save watchlists, paper trades, alerts, charts, and news in one cloud account.</p>
         </div>
         <form id="auth-form" class="auth-form" autocomplete="on">
           <label>
@@ -33,9 +39,12 @@
 
       <section id="dashboard-shell" hidden>
       <section class="topbar" aria-label="Dashboard controls">
-        <div>
-          <p class="eyebrow">Live market watch</p>
-          <h1>Stock Monitor</h1>
+        <div class="brand-lockup compact">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="brand-kicker">Live market watch</p>
+            <h1>Poshkan</h1>
+          </div>
         </div>
         <button id="sign-out" class="sign-out" type="button">Sign out</button>
       </section>
