@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stock Monitor Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section id="auth-panel" class="auth-panel" aria-live="polite">
+        <div>
+          <p class="eyebrow">Poshkan access</p>
+          <h1>Sign in to continue</h1>
+          <p>Use your account to save watchlists, paper trades, and alerts in the cloud.</p>
+        </div>
+        <form id="auth-form" class="auth-form" autocomplete="on">
+          <label>
+            <span>Email</span>
+            <input id="auth-email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required />
+          </label>
+          <div class="auth-actions">
+            <button type="submit" data-auth-action="signin">Sign in</button>
+            <button type="submit" data-auth-action="signup">Create account</button>
+          </div>
+          <p id="auth-message"></p>
+        </form>
+      </section>
+
+      <section id="dashboard-shell" hidden>
+      <section class="topbar" aria-label="Dashboard controls">
+        <div>
+          <p class="eyebrow">Live market watch</p>
+          <h1>Stock Monitor</h1>
+        </div>
+        <button id="sign-out" class="sign-out" type="button">Sign out</button>
+      </section>
+      <section id="account-summary" class="account-summary" aria-live="polite"></section>
+
+      <section class="status-row" aria-live="polite">
+        <div>
+          <span class="pulse"></span>
+          <span id="market-status">Connecting to market data...</span>
+        </div>
+        <div id="last-updated">Last update: --</div>
+      </section>
+      <div id="alert-tray" class="alert-tray" aria-live="polite"></div>
+
+      <section class="workspace">
+        <aside class="watchlist" aria-label="Stock watchlist">
+          <div class="panel-title">
+            <h2>Watchlist</h2>
+            <button id="refresh-now" title="Refresh quotes">Refresh</button>
+          </div>
+          <div class="watchlist-add">
+            <span>Add stock to selected group</span>
+            <form id="add-stock-form" class="add-stock" autocomplete="off">
+              <label class="sr-only" for="stock-symbol">Stock symbol</label>
+              <input id="stock-symbol" name="symbol" placeholder="AAPL" maxlength="12" />
+              <button type="submit" title="Add stock">+</button>
+            </form>
+          </div>
+          <div class="group-label">Groups</div>
+          <div id="group-tabs" class="group-tabs" aria-label="Watchlist groups"></div>
+          <div id="portfolio-summary" class="portfolio-summary" aria-live="polite"></div>
+          <div id="stock-list" class="stock-list"></div>
+        </aside>
+
+        <button
+          id="toggle-details"
+          class="details-toggle"
+          type="button"
+          aria-label="Hide chart and news panel"
+          aria-expanded="true"
+        >
+          &rsaquo;
+        </button>
+
+        <section class="details" aria-label="Selected stock details">
+          <div class="quote-hero">
+            <div>
+              <p id="selected-name" class="eyebrow">Select a stock</p>
+              <h2 id="selected-symbol">--</h2>
+            </div>
+            <div class="price-block">
+              <span id="selected-price">--</span>
+              <small id="selected-change">--</small>
+            </div>
+          </div>
+          <div id="selected-position" class="selected-position"></div>
+
+          <div class="chart-head">
+            <div>
+              <h2>Price Chart</h2>
+              <span id="chart-period-label">1D price history</span>
+            </div>
+            <div class="period-control" aria-label="Chart period">
+              <button type="button" data-period="1h">1H</button>
+              <button type="button" data-period="4h">4H</button>
+              <button type="button" data-period="1d" class="active">1D</button>
+              <button type="button" data-period="5d">5D</button>
+              <button type="button" data-period="1mo">1M</button>
+              <button type="button" data-period="6mo">6M</button>
+              <button type="button" data-period="1y">1Y</button>
+            </div>
+            <form id="custom-period-form" class="custom-period" autocomplete="off">
+              <label class="sr-only" for="custom-period-amount">Custom period amount</label>
+              <input id="custom-period-amount" type="number" min="1" max="365" value="2" />
+              <label class="sr-only" for="custom-period-unit">Custom period unit</label>
+              <select id="custom-period-unit">
+                <option value="hours">hours</option>
+                <option value="days" selected>days</option>
+                <option value="months">months</option>
+              </select>
+              <button type="submit">Apply</button>
+            </form>
+            <div class="chart-tools" aria-label="Chart tools">
+              <div class="mode-control" aria-label="Chart mode">
+                <button type="button" data-chart-mode="line" class="active">Line</button>
+                <button type="button" data-chart-mode="candles">Candles</button>
+              </div>
+              <label class="chart-toggle">
+                <input id="show-ma" type="checkbox" checked />
+                <span>MA</span>
+              </label>
+              <label class="chart-toggle">
+                <input id="show-volume" type="checkbox" checked />
+                <span>Vol</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="chart-wrap">
+            <canvas id="price-chart" width="960" height="320" aria-label="Intraday price chart"></canvas>
+          </div>
+
+          <div class="news-head">
+            <h2>Related News</h2>
+            <span id="news-source">Click a stock to load headlines</span>
+          </div>
+          <div id="news-list" class="news-list"></div>
+        </section>
+      </section>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

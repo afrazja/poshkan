@@ -1,0 +1,6 @@
+node_modules/
+server.err.log
+server.out.log
+start-dashboard.cmd
+.env
+.env.*
