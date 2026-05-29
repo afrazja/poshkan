@@ -5,6 +5,7 @@ import { extname, join, normalize } from "node:path";
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = join(process.cwd(), "public");
+const MAX_QUOTE_SYMBOLS = 120;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -454,7 +455,7 @@ async function quotesHandler(req, res) {
     .split(",")
     .map(cleanSymbol)
     .filter(Boolean)
-    .slice(0, 20);
+    .slice(0, MAX_QUOTE_SYMBOLS);
 
   if (!symbols.length) {
     return json(res, 400, { error: "Add at least one stock symbol." });
