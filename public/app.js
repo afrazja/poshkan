@@ -36,7 +36,10 @@ const state = {
   cloudSaving: false,
   cloudSaveQueued: false,
   refreshMs: 30000,
-  timer: null
+  paperSyncMs: 8000,
+  paperSyncing: false,
+  timer: null,
+  paperTimer: null
 };
 
 const elements = {
@@ -991,6 +994,56 @@ async function loadApiKeys() {
   }
 }
 
+async function syncPaperAccount({ quiet = true } = {}) {
+  if (!state.session?.access_token || state.paperSyncing) return;
+  state.paperSyncing = true;
+
+  try {
+    const data = await getJsonAuth("/api/paper/account");
+    const firstGroup = state.groups[0] || activeGroup();
+    let changed = false;
+
+    state.cash = Number(data.account?.cash) || state.cash;
+    state.realizedPnl = Number(data.account?.realizedPnl) || 0;
+    firstGroup.portfolio ||= {};
+    firstGroup.symbols ||= [];
+
+    (data.positions || []).forEach((position) => {
+      const symbol = cleanSymbol(position.symbol);
+      const shares = Number(position.shares) || 0;
+      if (!symbol || shares <= 0) return;
+
+      const existing = firstGroup.portfolio[symbol] || {};
+      if (!firstGroup.symbols.includes(symbol)) {
+        firstGroup.symbols = [symbol, ...firstGroup.symbols];
+        changed = true;
+      }
+      if (Number(existing.shares) !== shares || Number(existing.avgCost) !== Number(position.avgCost)) {
+        firstGroup.portfolio[symbol] = {
+          shares,
+          avgCost: Number(position.avgCost) || 0
+        };
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      saveGroups();
+      renderWatchlist();
+      renderSelectedQuote();
+      await refreshQuotes({ quiet: true });
+      if (!quiet) elements.marketStatus.textContent = "Paper account synced";
+    } else {
+      renderAccountSummary();
+      renderPortfolioSummary();
+    }
+  } catch (error) {
+    if (!quiet) elements.marketStatus.textContent = `Paper sync failed: ${error.message}`;
+  } finally {
+    state.paperSyncing = false;
+  }
+}
+
 function clearSignedOutState(message = "Signed out.") {
   state.session = null;
   state.cloudReady = false;
@@ -1032,6 +1085,7 @@ async function initializeAuth() {
   if (state.session) {
     await loadCloudData();
     await loadApiKeys();
+    await syncPaperAccount({ quiet: true });
     await refreshQuotes();
     if (state.selected) refreshNews(state.selected);
   }
@@ -1043,6 +1097,7 @@ async function initializeAuth() {
     if (session) {
       await loadCloudData();
       await loadApiKeys();
+      await syncPaperAccount({ quiet: true });
       refreshQuotes().then(() => {
         if (state.selected) refreshNews(state.selected);
       });
@@ -2538,3 +2593,7 @@ initializeAuth();
 state.timer = window.setInterval(() => {
   if (state.session) refreshQuotes({ quiet: true });
 }, state.refreshMs);
+
+state.paperTimer = window.setInterval(() => {
+  if (state.session) syncPaperAccount({ quiet: true });
+}, state.paperSyncMs);
