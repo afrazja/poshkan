@@ -696,6 +696,19 @@ async function loadCloudData() {
     if (positionsError) throw positionsError;
     if (alertsError) throw alertsError;
 
+    if (watchlists?.length && !(stocks || []).length && localGroups.some((group) => group.symbols?.length)) {
+      state.groups = localGroups;
+      state.activeGroupId = state.groups[0]?.id || "main";
+      state.selected = currentSymbols()[0] || null;
+      await ensureUuidGroupIds();
+      state.cloudReady = true;
+      await saveCloudData({ force: true });
+      saveGroups();
+      renderWatchlist();
+      renderSelectedQuote();
+      return;
+    }
+
     const portfolio = Object.fromEntries(
       (positions || []).map((position) => [
         cleanSymbol(position.symbol),
@@ -763,7 +776,13 @@ async function saveCloudData({ force = false } = {}) {
   const userId = state.session.user.id;
   await ensureUuidGroupIds();
 
-  await state.supabase
+  const saveResult = async (request) => {
+    const { error } = await request;
+    if (error) throw error;
+  };
+
+  await saveResult(
+    state.supabase
     .from("accounts")
     .upsert(
       {
@@ -772,20 +791,23 @@ async function saveCloudData({ force = false } = {}) {
         realized_pnl: state.realizedPnl
       },
       { onConflict: "user_id" }
-    );
+    )
+  );
 
-  await state.supabase.from("watchlists").upsert(
-    state.groups.map((group, index) => ({
-      id: group.id,
-      user_id: userId,
-      name: group.name,
-      sort_order: index
-    }))
+  await saveResult(
+    state.supabase.from("watchlists").upsert(
+      state.groups.map((group, index) => ({
+        id: group.id,
+        user_id: userId,
+        name: group.name,
+        sort_order: index
+      }))
+    )
   );
 
   const ids = state.groups.map((group) => group.id).filter(isUuid);
   if (ids.length) {
-    await state.supabase.from("watchlist_stocks").delete().in("watchlist_id", ids);
+    await saveResult(state.supabase.from("watchlist_stocks").delete().in("watchlist_id", ids));
   }
 
   const stocks = state.groups.flatMap((group) =>
@@ -795,12 +817,12 @@ async function saveCloudData({ force = false } = {}) {
     }))
   );
   if (stocks.length) {
-    await state.supabase.from("watchlist_stocks").insert(stocks);
+    await saveResult(state.supabase.from("watchlist_stocks").insert(stocks));
   }
 
   const symbols = [...new Set(state.groups.flatMap((group) => group.symbols))];
-  await state.supabase.from("positions").delete().eq("user_id", userId);
-  await state.supabase.from("alerts").delete().eq("user_id", userId);
+  await saveResult(state.supabase.from("positions").delete().eq("user_id", userId));
+  await saveResult(state.supabase.from("alerts").delete().eq("user_id", userId));
 
   const activePositions = symbols
     .map((symbol) => {
@@ -812,7 +834,7 @@ async function saveCloudData({ force = false } = {}) {
     })
     .filter(Boolean);
   if (activePositions.length) {
-    await state.supabase.from("positions").insert(activePositions);
+    await saveResult(state.supabase.from("positions").insert(activePositions));
   }
 
   const activeAlerts = symbols
@@ -825,7 +847,7 @@ async function saveCloudData({ force = false } = {}) {
     })
     .filter(Boolean);
   if (activeAlerts.length) {
-    await state.supabase.from("alerts").insert(activeAlerts);
+    await saveResult(state.supabase.from("alerts").insert(activeAlerts));
   }
 }
 
