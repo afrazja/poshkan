@@ -929,6 +929,28 @@ function invalidSymbolMessage(invalids = []) {
     : `${invalid.symbol} is not an available stock symbol. Check the ticker and exchange suffix.`;
 }
 
+function removeInvalidSymbols(invalids = []) {
+  const invalidSymbols = new Set(invalids.map((invalid) => cleanSymbol(invalid.symbol)).filter(Boolean));
+  if (!invalidSymbols.size) return false;
+
+  const group = activeGroup();
+  const beforeCount = group.symbols.length;
+  group.symbols = group.symbols.filter((symbol) => !invalidSymbols.has(symbol));
+  invalidSymbols.forEach((symbol) => {
+    delete group.portfolio?.[symbol];
+    delete group.alerts?.[symbol];
+    state.quotes.delete(symbol);
+  });
+
+  if (invalidSymbols.has(state.selected)) {
+    state.selected = group.symbols[0] || null;
+  }
+
+  const changed = group.symbols.length !== beforeCount;
+  if (changed) saveGroups();
+  return changed;
+}
+
 async function lookupStockBeforeAdd(symbol) {
   const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbol)}`);
   if (data.invalids?.length || !data.quotes?.length) {
@@ -958,6 +980,7 @@ async function refreshQuotes({ quiet = false } = {}) {
 
   try {
     const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
+    const removedInvalids = removeInvalidSymbols(data.invalids || []);
     if (data.invalids?.length) {
       elements.marketStatus.textContent = invalidSymbolMessage(data.invalids);
     }
@@ -966,6 +989,11 @@ async function refreshQuotes({ quiet = false } = {}) {
     const triggeredCount = evaluateAlerts(data.quotes);
     if (!currentSymbols().includes(state.selected)) {
       state.selected = data.quotes[0]?.symbol || null;
+    }
+    if (removedInvalids && !state.selected) {
+      drawEmptyChart("Add or select a stock");
+      elements.newsSource.textContent = "Click a stock to load headlines";
+      elements.newsList.innerHTML = "";
     }
     if (data.source === "yahoo-chart") {
       if (!data.invalids?.length) {
