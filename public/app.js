@@ -2,6 +2,8 @@ const DEFAULT_SYMBOLS = ["AAPL", "MSFT", "NVDA", "TSLA"];
 const STORAGE_KEY = "stock-dashboard-symbols";
 const GROUPS_KEY = "stock-dashboard-groups";
 const ACTIVE_GROUP_KEY = "stock-dashboard-active-group";
+const PORTFOLIO_MODE_KEY = "stock-dashboard-portfolio-mode";
+const REAL_POSITIONS_KEY = "stock-dashboard-real-positions";
 const CASH_KEY = "stock-dashboard-paper-cash";
 const REALIZED_PNL_KEY = "stock-dashboard-realized-pnl";
 const ALERT_DIRECTIONS = new Set(["above", "below"]);
@@ -10,6 +12,8 @@ const STARTING_CASH = 100000;
 const state = {
   groups: loadGroups(),
   activeGroupId: localStorage.getItem(ACTIVE_GROUP_KEY) || "main",
+  portfolioMode: localStorage.getItem(PORTFOLIO_MODE_KEY) === "real" ? "real" : "paper",
+  realPositions: loadRealPositions(),
   quotes: new Map(),
   cash: loadAccountCash(),
   realizedPnl: loadRealizedPnl(),
@@ -32,6 +36,7 @@ const state = {
   supabase: null,
   session: null,
   paperApiKeysEnabled: false,
+  realPositionsCloudEnabled: false,
   cloudReady: false,
   cloudSaving: false,
   cloudSaveQueued: false,
@@ -57,6 +62,13 @@ const elements = {
   dashboardShell: document.querySelector("#dashboard-shell"),
   signOut: document.querySelector("#sign-out"),
   form: document.querySelector("#add-stock-form"),
+  realPositionForm: document.querySelector("#real-position-form"),
+  realSymbol: document.querySelector("#real-symbol"),
+  realShares: document.querySelector("#real-shares"),
+  realAvgCost: document.querySelector("#real-avg-cost"),
+  watchlistAddTitle: document.querySelector("#watchlist-add-title"),
+  groupLabel: document.querySelector("#group-label"),
+  portfolioModeButtons: document.querySelectorAll("[data-portfolio-mode]"),
   input: document.querySelector("#stock-symbol"),
   addStockMessage: document.querySelector("#add-stock-message"),
   groupTabs: document.querySelector("#group-tabs"),
@@ -166,6 +178,22 @@ function normalizePortfolio(value) {
   );
 }
 
+function loadRealPositions() {
+  try {
+    return normalizePortfolio(JSON.parse(localStorage.getItem(REAL_POSITIONS_KEY)));
+  } catch {
+    return {};
+  }
+}
+
+function isRealMode() {
+  return state.portfolioMode === "real";
+}
+
+function isPaperMode() {
+  return !isRealMode();
+}
+
 function normalizeAlerts(value) {
   if (!value || typeof value !== "object") return {};
 
@@ -232,7 +260,7 @@ function activeGroup() {
 }
 
 function currentSymbols() {
-  return activeGroup()?.symbols || [];
+  return isRealMode() ? Object.keys(state.realPositions) : activeGroup()?.symbols || [];
 }
 
 function ensurePositionSymbolsVisible() {
@@ -268,15 +296,21 @@ function ensurePositionSymbolsVisible() {
 
 function saveGroups() {
   ensurePositionSymbolsVisible();
+  localStorage.setItem(PORTFOLIO_MODE_KEY, state.portfolioMode);
+  localStorage.setItem(REAL_POSITIONS_KEY, JSON.stringify(state.realPositions));
   localStorage.setItem(GROUPS_KEY, JSON.stringify(state.groups));
   localStorage.setItem(ACTIVE_GROUP_KEY, state.activeGroupId);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSymbols()));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(activeGroup()?.symbols || []));
   localStorage.setItem(CASH_KEY, String(state.cash));
   localStorage.setItem(REALIZED_PNL_KEY, String(state.realizedPnl));
   queueCloudSave();
 }
 
 function positionFor(symbol) {
+  if (isRealMode()) {
+    state.realPositions[symbol] ||= { shares: 0, avgCost: 0 };
+    return state.realPositions[symbol];
+  }
   const group = activeGroup();
   group.portfolio ||= {};
   group.portfolio[symbol] ||= { shares: 0, avgCost: 0 };
@@ -315,7 +349,7 @@ function portfolioTotals() {
     },
     { value: 0, cost: 0, pnl: 0 }
   );
-  const cash = state.cash;
+  const cash = isRealMode() ? 0 : state.cash;
   return { ...holdings, cash, equity: holdings.value + cash };
 }
 
@@ -726,9 +760,31 @@ async function ensureUuidGroupIds() {
   }
 }
 
+async function loadCloudRealPositions(userId) {
+  try {
+    const { data, error } = await state.supabase
+      .from("real_positions")
+      .select("symbol, shares, avg_cost")
+      .eq("user_id", userId);
+    if (error) throw error;
+    state.realPositionsCloudEnabled = true;
+    state.realPositions = normalizePortfolio(
+      Object.fromEntries(
+        (data || []).map((position) => [
+          cleanSymbol(position.symbol),
+          { shares: Number(position.shares) || 0, avgCost: Number(position.avg_cost) || 0 }
+        ])
+      )
+    );
+  } catch {
+    state.realPositionsCloudEnabled = false;
+  }
+}
+
 async function loadCloudData() {
   if (!state.supabase || !state.session) return;
   const userId = state.session.user.id;
+  const localRealPositions = { ...state.realPositions };
   const localGroups = state.groups.map((group) => ({
     ...group,
     symbols: [...(group.symbols || [])],
@@ -749,8 +805,11 @@ async function loadCloudData() {
     .maybeSingle();
 
   if (accountError) throw accountError;
+  await loadCloudRealPositions(userId);
+  if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
 
   if (!account) {
+    state.realPositions = localRealPositions;
     await ensureUuidGroupIds();
     await saveCloudData({ force: true });
   } else {
@@ -765,6 +824,8 @@ async function loadCloudData() {
     if (watchlistsError) throw watchlistsError;
 
     if (!watchlists?.length && localGroups.some((group) => group.symbols?.length)) {
+      await loadCloudRealPositions(userId);
+      if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
       state.groups = localGroups;
       state.activeGroupId = state.groups[0]?.id || "main";
       state.selected = currentSymbols()[0] || null;
@@ -792,6 +853,8 @@ async function loadCloudData() {
     if (alertsError) throw alertsError;
 
     if (watchlists?.length && !(stocks || []).length && localGroups.some((group) => group.symbols?.length)) {
+      await loadCloudRealPositions(userId);
+      if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
       state.groups = localGroups;
       state.activeGroupId = state.groups[0]?.id || "main";
       state.selected = currentSymbols()[0] || null;
@@ -835,6 +898,8 @@ async function loadCloudData() {
           }))
         : [{ id: "main", name: "Main", symbols: DEFAULT_SYMBOLS, portfolio: {}, alerts: {} }];
     ensurePositionSymbolsVisible();
+    await loadCloudRealPositions(userId);
+    if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
 
     state.activeGroupId = state.groups[0]?.id || "main";
     state.selected = currentSymbols()[0] || null;
@@ -931,6 +996,20 @@ async function saveCloudData({ force = false } = {}) {
     .filter(Boolean);
   if (activePositions.length) {
     await saveResult(state.supabase.from("positions").insert(activePositions));
+  }
+
+  if (state.realPositionsCloudEnabled) {
+    await saveResult(state.supabase.from("real_positions").delete().eq("user_id", userId));
+    const realPositions = Object.entries(state.realPositions || {})
+      .map(([symbol, position]) => {
+        const shares = Number(position?.shares) || 0;
+        const avgCost = Number(position?.avgCost) || 0;
+        return shares > 0 ? { user_id: userId, symbol: cleanSymbol(symbol), shares, avg_cost: avgCost } : null;
+      })
+      .filter(Boolean);
+    if (realPositions.length) {
+      await saveResult(state.supabase.from("real_positions").insert(realPositions));
+    }
   }
 
   const activeAlerts = symbols
@@ -1112,7 +1191,19 @@ function applyResolvedSymbols(quotes) {
   quotes.forEach((quote) => {
     const requested = cleanSymbol(quote.requestedSymbol);
     const resolved = cleanSymbol(quote.symbol);
-    if (!requested || !resolved || requested === resolved || !group.symbols.includes(requested)) return;
+    if (!requested || !resolved || requested === resolved) return;
+
+    if (isRealMode()) {
+      if (!state.realPositions[requested]) return;
+      if (!state.realPositions[resolved]) state.realPositions[resolved] = state.realPositions[requested];
+      delete state.realPositions[requested];
+      state.quotes.delete(requested);
+      if (state.selected === requested) state.selected = resolved;
+      changed = true;
+      return;
+    }
+
+    if (!group.symbols.includes(requested)) return;
 
     group.symbols = group.symbols.map((symbol) => (symbol === requested ? resolved : symbol));
     if (group.portfolio?.[requested] && !group.portfolio[resolved]) {
@@ -1131,7 +1222,7 @@ function applyResolvedSymbols(quotes) {
   });
 
   if (changed) {
-    group.symbols = [...new Set(group.symbols)];
+    if (isPaperMode()) group.symbols = [...new Set(group.symbols)];
     saveGroups();
   }
 }
@@ -1155,6 +1246,20 @@ function invalidSymbolMessage(invalids = []) {
 function removeInvalidSymbols(invalids = []) {
   const invalidSymbols = new Set(invalids.map((invalid) => cleanSymbol(invalid.symbol)).filter(Boolean));
   if (!invalidSymbols.size) return false;
+
+  if (isRealMode()) {
+    const beforeCount = Object.keys(state.realPositions).length;
+    invalidSymbols.forEach((symbol) => {
+      delete state.realPositions[symbol];
+      state.quotes.delete(symbol);
+    });
+    if (invalidSymbols.has(state.selected)) {
+      state.selected = currentSymbols()[0] || null;
+    }
+    const changed = Object.keys(state.realPositions).length !== beforeCount;
+    if (changed) saveGroups();
+    return changed;
+  }
 
   const group = activeGroup();
   const beforeCount = group.symbols.length;
@@ -1486,7 +1591,22 @@ function renderPortfolioSummary() {
   const pnlClass = totals.pnl >= 0 ? "up" : "down";
   const pnlPercent = totals.cost > 0 ? (totals.pnl / totals.cost) * 100 : 0;
 
-  elements.portfolioSummary.innerHTML = `
+  elements.portfolioSummary.innerHTML = isRealMode()
+    ? `
+    <div>
+      <span>Real holdings</span>
+      <strong>${money(totals.value)}</strong>
+    </div>
+    <div>
+      <span>Cost basis</span>
+      <strong>${money(totals.cost)}</strong>
+    </div>
+    <div>
+      <span>Unrealized P/L</span>
+      <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
+    </div>
+  `
+    : `
     <div>
       <span>Holdings</span>
       <strong>${money(totals.value)}</strong>
@@ -1503,6 +1623,32 @@ function renderPortfolioSummary() {
 }
 
 function renderAccountSummary() {
+  renderPortfolioMode();
+  if (isRealMode()) {
+    const totals = portfolioTotals();
+    const pnlClass = totals.pnl >= 0 ? "up" : "down";
+    const pnlPercent = totals.cost > 0 ? (totals.pnl / totals.cost) * 100 : 0;
+    elements.accountSummary.innerHTML = `
+      <div>
+        <span>Real portfolio value</span>
+        <strong>${money(totals.value)}</strong>
+      </div>
+      <div>
+        <span>Cost basis</span>
+        <strong>${money(totals.cost)}</strong>
+      </div>
+      <div>
+        <span>Unrealized P/L</span>
+        <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
+      </div>
+      <div>
+        <span>Positions</span>
+        <strong>${currentSymbols().length}</strong>
+      </div>
+    `;
+    return;
+  }
+
   const totals = accountTotals();
   const realizedClass = totals.realizedPnl >= 0 ? "up" : "down";
   const unrealizedClass = totals.unrealizedPnl >= 0 ? "up" : "down";
@@ -1531,6 +1677,20 @@ function renderAccountSummary() {
     </div>
     <button type="button" id="reset-paper-account">Reset</button>
   `;
+}
+
+function renderPortfolioMode() {
+  elements.portfolioModeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.portfolioMode === state.portfolioMode);
+  });
+  elements.apiKeyPanel.hidden = isRealMode();
+  elements.form.hidden = isRealMode();
+  elements.realPositionForm.hidden = isPaperMode();
+  elements.groupTabs.hidden = isRealMode();
+  elements.groupLabel.hidden = isRealMode();
+  elements.watchlistAddTitle.textContent = isRealMode()
+    ? "Add or update real holding"
+    : "Add stock to selected group";
 }
 
 function resetPaperAccount() {
@@ -1568,9 +1728,11 @@ function renderWatchlist() {
   renderPortfolioSummary();
 
   if (!symbols.length) {
-    elements.stockList.innerHTML = `<div class="empty-state">Add a ticker symbol to ${escapeHtml(
-      group.name
-    )}.</div>`;
+    elements.stockList.innerHTML = `<div class="empty-state">${
+      isRealMode()
+        ? "Add your first real holding with shares and average cost."
+        : `Add a ticker symbol to ${escapeHtml(group.name)}.`
+    }</div>`;
     return;
   }
 
@@ -1585,14 +1747,14 @@ function renderWatchlist() {
       const ownedShares = Number(stats.shares) || 0;
       const ownedShareLabel = ownedShares.toLocaleString(undefined, { maximumFractionDigits: 4 });
       const pnlDirection = stats.pnl >= 0 ? "up" : "down";
-      const alert = alertFor(symbol);
-      const status = alertStatus(symbol);
+      const alert = isPaperMode() ? alertFor(symbol) : { active: false, direction: "above", target: 0 };
+      const status = isPaperMode() ? alertStatus(symbol) : { triggered: false, label: "No alert", className: "" };
       const isSelected = state.selected === symbol;
 
       return `
         <article class="stock-card ${isSelected ? "active expanded" : "compact"} ${
           status.triggered ? "alert-hit" : ""
-        }" data-symbol="${symbol}" draggable="true">
+        }" data-symbol="${symbol}" draggable="${isPaperMode()}">
           <button class="stock-main" data-action="select" data-symbol="${symbol}">
             <span class="stock-title">
               <strong>${escapeHtml(symbol)}</strong>
@@ -1633,6 +1795,9 @@ function renderWatchlist() {
                     <strong class="${pnlDirection}">${signedMoney(stats.pnl)} (${signed(stats.pnlPercent, "%")})</strong>
                   </div>
                 </div>
+                ${
+                  isPaperMode()
+                    ? `
                 <div class="trade-editor">
                   <label>
                     <span>Paper trade</span>
@@ -1641,6 +1806,24 @@ function renderWatchlist() {
                   <button type="button" data-trade-action="buy" data-symbol="${symbol}">Buy</button>
                   <button type="button" data-trade-action="sell" data-symbol="${symbol}">Sell</button>
                 </div>
+                    `
+                    : `
+                <div class="real-editor">
+                  <label>
+                    <span>Real shares</span>
+                    <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
+                  </label>
+                  <label>
+                    <span>Avg cost</span>
+                    <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
+                  </label>
+                  <button type="button" data-real-action="save" data-symbol="${symbol}">Save</button>
+                </div>
+                    `
+                }
+                ${
+                  isPaperMode()
+                    ? `
                 <div class="alert-editor">
                   <label class="alert-switch">
                     <span>Alert</span>
@@ -1661,6 +1844,9 @@ function renderWatchlist() {
                     }" />
                   </label>
                 </div>
+                    `
+                    : ""
+                }
               `
               : ""
           }
@@ -1700,8 +1886,8 @@ function renderSelectedQuote() {
   elements.selectedChange.className = direction;
   const stats = positionStats(quote.symbol);
   const pnlDirection = stats.pnl >= 0 ? "up" : "down";
-  const selectedAlert = alertFor(quote.symbol);
-  const selectedAlertStatus = alertStatus(quote.symbol);
+  const selectedAlert = isPaperMode() ? alertFor(quote.symbol) : { active: false };
+  const selectedAlertStatus = isPaperMode() ? alertStatus(quote.symbol) : { label: "--", className: "" };
   elements.selectedPosition.innerHTML = `
     <div>
       <span>Shares</span>
@@ -1720,9 +1906,9 @@ function renderSelectedQuote() {
       <strong class="${pnlDirection}">${signedMoney(stats.pnl)} (${signed(stats.pnlPercent, "%")})</strong>
     </div>
     <div>
-      <span>Price alert</span>
+      <span>${isRealMode() ? "Portfolio" : "Price alert"}</span>
       <strong class="${selectedAlertStatus.className === "triggered" ? "down" : ""}">${
-        selectedAlert.active ? selectedAlertStatus.label : "--"
+        isRealMode() ? "Real tracker" : selectedAlert.active ? selectedAlertStatus.label : "--"
       }</strong>
     </div>
   `;
@@ -2067,6 +2253,7 @@ function getDragAfterCard(container, x, y) {
 }
 
 function saveDraggedCardOrder() {
+  if (isRealMode()) return;
   const group = activeGroup();
   const orderedSymbols = [...elements.stockList.querySelectorAll(".stock-card")]
     .map((card) => cleanSymbol(card.dataset.symbol))
@@ -2076,6 +2263,43 @@ function saveDraggedCardOrder() {
   group.symbols = orderedSymbols;
   saveGroups();
   renderWatchlist();
+}
+
+async function addOrUpdateRealPosition(symbol, shares, avgCost) {
+  const cleaned = cleanSymbol(symbol);
+  const positionShares = Math.max(0, Number(shares) || 0);
+  const positionAvgCost = Math.max(0, Number(avgCost) || 0);
+  if (!cleaned || positionShares <= 0) {
+    setAddStockMessage("Enter a valid stock symbol and share count.", "error");
+    return;
+  }
+
+  setAddStockMessage(`Checking ${cleaned}...`);
+  const quote = await lookupStockBeforeAdd(cleaned);
+  if (!quote) return;
+
+  const resolvedSymbol = cleanSymbol(quote.symbol);
+  state.realPositions[resolvedSymbol] = { shares: positionShares, avgCost: positionAvgCost };
+  state.quotes.set(resolvedSymbol, quote);
+  state.selected = resolvedSymbol;
+  saveGroups();
+  renderWatchlist();
+  renderSelectedQuote();
+  setAddStockMessage(`${resolvedSymbol} real position saved.`, "success");
+  await refreshQuotes();
+  await refreshNews(resolvedSymbol);
+}
+
+function setPortfolioMode(mode) {
+  state.portfolioMode = mode === "real" ? "real" : "paper";
+  state.selected = currentSymbols()[0] || null;
+  saveGroups();
+  renderWatchlist();
+  renderSelectedQuote();
+  if (state.selected) {
+    refreshHistory(state.selected);
+    refreshNews(state.selected);
+  }
 }
 
 elements.form.addEventListener("submit", async (event) => {
@@ -2112,6 +2336,22 @@ elements.form.addEventListener("submit", async (event) => {
   setAddStockMessage(`${resolvedSymbol} added to ${group.name}.`, "success");
   await refreshQuotes();
   await refreshNews(resolvedSymbol);
+});
+
+elements.realPositionForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await addOrUpdateRealPosition(
+    elements.realSymbol.value,
+    elements.realShares.value,
+    elements.realAvgCost.value
+  );
+  elements.realSymbol.value = "";
+  elements.realShares.value = "";
+  elements.realAvgCost.value = "";
+});
+
+elements.portfolioModeButtons.forEach((button) => {
+  button.addEventListener("click", () => setPortfolioMode(button.dataset.portfolioMode));
 });
 
 elements.authForm.addEventListener("submit", async (event) => {
@@ -2393,6 +2633,7 @@ elements.stockList.addEventListener("click", async (event) => {
   if (!button) return;
 
   if (button.dataset.tradeAction) {
+    if (isRealMode()) return;
     const symbol = cleanSymbol(button.dataset.symbol);
     const card = button.closest(".stock-card");
     const qty = card?.querySelector("input[data-trade-qty]")?.value;
@@ -2400,8 +2641,27 @@ elements.stockList.addEventListener("click", async (event) => {
     return;
   }
 
+  if (button.dataset.realAction === "save") {
+    const symbol = cleanSymbol(button.dataset.symbol);
+    const card = button.closest(".stock-card");
+    const shares = card?.querySelector('[data-real-field="shares"]')?.value;
+    const avgCost = card?.querySelector('[data-real-field="avgCost"]')?.value;
+    await addOrUpdateRealPosition(symbol, shares, avgCost);
+    return;
+  }
+
   const symbol = button.dataset.symbol;
   if (button.dataset.action === "remove") {
+    if (isRealMode()) {
+      delete state.realPositions[symbol];
+      state.quotes.delete(symbol);
+      state.selected = currentSymbols()[0] || null;
+      saveGroups();
+      renderWatchlist();
+      renderSelectedQuote();
+      if (state.selected) await selectStock(state.selected);
+      return;
+    }
     const group = activeGroup();
     group.symbols = group.symbols.filter((item) => item !== symbol);
     delete group.portfolio?.[symbol];
@@ -2421,6 +2681,10 @@ elements.stockList.addEventListener("click", async (event) => {
 });
 
 elements.stockList.addEventListener("dragstart", (event) => {
+  if (isRealMode()) {
+    event.preventDefault();
+    return;
+  }
   const card = event.target.closest(".stock-card");
   if (!card || event.target.closest("input, select, label")) {
     event.preventDefault();
@@ -2592,6 +2856,8 @@ window.addEventListener("resize", () => {
 renderPeriodButtons();
 renderChartControls();
 renderSectionVisibility();
+state.selected = currentSymbols()[0] || null;
+renderPortfolioMode();
 setAuthMode("signin");
 
 initializeAuth();

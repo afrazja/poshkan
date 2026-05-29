@@ -115,6 +115,10 @@
         <button id="sign-out" class="sign-out" type="button">Sign out</button>
       </section>
       <section id="account-summary" class="account-summary" aria-live="polite"></section>
+      <section class="portfolio-mode" aria-label="Portfolio mode">
+        <button type="button" class="active" data-portfolio-mode="paper">Paper Trading</button>
+        <button type="button" data-portfolio-mode="real">Real Portfolio</button>
+      </section>
       <section id="api-key-panel" class="api-key-panel" aria-live="polite">
         <div>
           <p class="eyebrow">Claude paper API</p>
@@ -143,15 +147,30 @@
             <button id="refresh-now" title="Refresh quotes">Refresh</button>
           </div>
           <div class="watchlist-add">
-            <span>Add stock to selected group</span>
+            <span id="watchlist-add-title">Add stock to selected group</span>
             <form id="add-stock-form" class="add-stock" autocomplete="off">
               <label class="sr-only" for="stock-symbol">Stock symbol</label>
               <input id="stock-symbol" name="symbol" placeholder="AAPL" maxlength="12" />
               <button type="submit" title="Add stock">+</button>
             </form>
+            <form id="real-position-form" class="real-position-form" autocomplete="off" hidden>
+              <label>
+                <span>Symbol</span>
+                <input id="real-symbol" name="symbol" placeholder="AAPL" maxlength="12" />
+              </label>
+              <label>
+                <span>Shares</span>
+                <input id="real-shares" name="shares" type="number" min="0" step="0.0001" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Avg cost</span>
+                <input id="real-avg-cost" name="avgCost" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+              <button type="submit">Add</button>
+            </form>
             <p id="add-stock-message" class="add-stock-message" aria-live="polite"></p>
           </div>
-          <div class="group-label">Groups</div>
+          <div id="group-label" class="group-label">Groups</div>
           <div id="group-tabs" class="group-tabs" aria-label="Watchlist groups"></div>
           <div id="portfolio-summary" class="portfolio-summary" aria-live="polite"></div>
           <div id="stock-list" class="stock-list"></div>
