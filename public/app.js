@@ -4,6 +4,8 @@ const GROUPS_KEY = "stock-dashboard-groups";
 const ACTIVE_GROUP_KEY = "stock-dashboard-active-group";
 const PORTFOLIO_MODE_KEY = "stock-dashboard-portfolio-mode";
 const REAL_POSITIONS_KEY = "stock-dashboard-real-positions";
+const REAL_WATCHLIST_KEY = "stock-dashboard-real-watchlist";
+const REAL_ACTIVE_TAB_KEY = "stock-dashboard-real-active-tab";
 const CASH_KEY = "stock-dashboard-paper-cash";
 const REALIZED_PNL_KEY = "stock-dashboard-realized-pnl";
 const ALERT_DIRECTIONS = new Set(["above", "below"]);
@@ -14,6 +16,8 @@ const state = {
   activeGroupId: localStorage.getItem(ACTIVE_GROUP_KEY) || "main",
   portfolioMode: localStorage.getItem(PORTFOLIO_MODE_KEY) === "real" ? "real" : "paper",
   realPositions: loadRealPositions(),
+  realWatchlist: loadRealWatchlist(),
+  activeRealTab: localStorage.getItem(REAL_ACTIVE_TAB_KEY) === "watchlist" ? "watchlist" : "owned",
   quotes: new Map(),
   cash: loadAccountCash(),
   realizedPnl: loadRealizedPnl(),
@@ -186,12 +190,29 @@ function loadRealPositions() {
   }
 }
 
+function loadRealWatchlist() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REAL_WATCHLIST_KEY));
+    return Array.isArray(saved) ? [...new Set(saved.map(cleanSymbol).filter(Boolean))] : [];
+  } catch {
+    return [];
+  }
+}
+
 function isRealMode() {
   return state.portfolioMode === "real";
 }
 
 function isPaperMode() {
   return !isRealMode();
+}
+
+function isRealOwnedTab() {
+  return isRealMode() && state.activeRealTab === "owned";
+}
+
+function isRealWatchlistTab() {
+  return isRealMode() && state.activeRealTab === "watchlist";
 }
 
 function normalizeAlerts(value) {
@@ -260,7 +281,10 @@ function activeGroup() {
 }
 
 function currentSymbols() {
-  return isRealMode() ? Object.keys(state.realPositions) : activeGroup()?.symbols || [];
+  if (isRealMode()) {
+    return isRealOwnedTab() ? Object.keys(state.realPositions) : state.realWatchlist;
+  }
+  return activeGroup()?.symbols || [];
 }
 
 function ensurePositionSymbolsVisible() {
@@ -298,6 +322,8 @@ function saveGroups() {
   ensurePositionSymbolsVisible();
   localStorage.setItem(PORTFOLIO_MODE_KEY, state.portfolioMode);
   localStorage.setItem(REAL_POSITIONS_KEY, JSON.stringify(state.realPositions));
+  localStorage.setItem(REAL_WATCHLIST_KEY, JSON.stringify(state.realWatchlist));
+  localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
   localStorage.setItem(GROUPS_KEY, JSON.stringify(state.groups));
   localStorage.setItem(ACTIVE_GROUP_KEY, state.activeGroupId);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(activeGroup()?.symbols || []));
@@ -308,8 +334,7 @@ function saveGroups() {
 
 function positionFor(symbol) {
   if (isRealMode()) {
-    state.realPositions[symbol] ||= { shares: 0, avgCost: 0 };
-    return state.realPositions[symbol];
+    return state.realPositions[symbol] || { shares: 0, avgCost: 0 };
   }
   const group = activeGroup();
   group.portfolio ||= {};
@@ -338,8 +363,8 @@ function positionStats(symbol) {
   return { shares, avgCost, value, cost, pnl, pnlPercent };
 }
 
-function portfolioTotals() {
-  const holdings = currentSymbols().reduce(
+function portfolioTotals(symbols = currentSymbols()) {
+  const holdings = symbols.reduce(
     (totals, symbol) => {
       const stats = positionStats(symbol);
       totals.value += stats.value;
@@ -762,11 +787,12 @@ async function ensureUuidGroupIds() {
 
 async function loadCloudRealPositions(userId) {
   try {
-    const { data, error } = await state.supabase
-      .from("real_positions")
-      .select("symbol, shares, avg_cost")
-      .eq("user_id", userId);
+    const [{ data, error }, { data: watchlistData, error: watchlistError }] = await Promise.all([
+      state.supabase.from("real_positions").select("symbol, shares, avg_cost").eq("user_id", userId),
+      state.supabase.from("real_watchlist").select("symbol").eq("user_id", userId).order("sort_order", { ascending: true })
+    ]);
     if (error) throw error;
+    if (watchlistError) throw watchlistError;
     state.realPositionsCloudEnabled = true;
     state.realPositions = normalizePortfolio(
       Object.fromEntries(
@@ -776,6 +802,9 @@ async function loadCloudRealPositions(userId) {
         ])
       )
     );
+    state.realWatchlist = [
+      ...new Set((watchlistData || []).map((item) => cleanSymbol(item.symbol)).filter(Boolean))
+    ];
   } catch {
     state.realPositionsCloudEnabled = false;
   }
@@ -1000,6 +1029,7 @@ async function saveCloudData({ force = false } = {}) {
 
   if (state.realPositionsCloudEnabled) {
     await saveResult(state.supabase.from("real_positions").delete().eq("user_id", userId));
+    await saveResult(state.supabase.from("real_watchlist").delete().eq("user_id", userId));
     const realPositions = Object.entries(state.realPositions || {})
       .map(([symbol, position]) => {
         const shares = Number(position?.shares) || 0;
@@ -1009,6 +1039,14 @@ async function saveCloudData({ force = false } = {}) {
       .filter(Boolean);
     if (realPositions.length) {
       await saveResult(state.supabase.from("real_positions").insert(realPositions));
+    }
+    const ownedSymbols = new Set(Object.keys(state.realPositions || {}));
+    const realWatchlist = (state.realWatchlist || [])
+      .map(cleanSymbol)
+      .filter((symbol) => symbol && !ownedSymbols.has(symbol))
+      .map((symbol, index) => ({ user_id: userId, symbol, sort_order: index }));
+    if (realWatchlist.length) {
+      await saveResult(state.supabase.from("real_watchlist").insert(realWatchlist));
     }
   }
 
@@ -1194,9 +1232,15 @@ function applyResolvedSymbols(quotes) {
     if (!requested || !resolved || requested === resolved) return;
 
     if (isRealMode()) {
-      if (!state.realPositions[requested]) return;
-      if (!state.realPositions[resolved]) state.realPositions[resolved] = state.realPositions[requested];
-      delete state.realPositions[requested];
+      if (state.realPositions[requested]) {
+        if (!state.realPositions[resolved]) state.realPositions[resolved] = state.realPositions[requested];
+        delete state.realPositions[requested];
+      } else if (state.realWatchlist.includes(requested)) {
+        state.realWatchlist = state.realWatchlist.map((symbol) => (symbol === requested ? resolved : symbol));
+        state.realWatchlist = [...new Set(state.realWatchlist)];
+      } else {
+        return;
+      }
       state.quotes.delete(requested);
       if (state.selected === requested) state.selected = resolved;
       changed = true;
@@ -1248,15 +1292,16 @@ function removeInvalidSymbols(invalids = []) {
   if (!invalidSymbols.size) return false;
 
   if (isRealMode()) {
-    const beforeCount = Object.keys(state.realPositions).length;
+    const beforeCount = Object.keys(state.realPositions).length + state.realWatchlist.length;
     invalidSymbols.forEach((symbol) => {
       delete state.realPositions[symbol];
+      state.realWatchlist = state.realWatchlist.filter((item) => item !== symbol);
       state.quotes.delete(symbol);
     });
     if (invalidSymbols.has(state.selected)) {
       state.selected = currentSymbols()[0] || null;
     }
-    const changed = Object.keys(state.realPositions).length !== beforeCount;
+    const changed = Object.keys(state.realPositions).length + state.realWatchlist.length !== beforeCount;
     if (changed) saveGroups();
     return changed;
   }
@@ -1544,6 +1589,20 @@ function showGroupInput() {
 }
 
 function renderGroups() {
+  if (isRealMode()) {
+    elements.groupTabs.innerHTML = `
+      <button type="button" class="group-tab ${state.activeRealTab === "owned" ? "active" : ""}" data-real-tab="owned">
+        <span>Own stock</span>
+        <small>${Object.keys(state.realPositions).length}</small>
+      </button>
+      <button type="button" class="group-tab ${state.activeRealTab === "watchlist" ? "active" : ""}" data-real-tab="watchlist">
+        <span>Watch list</span>
+        <small>${state.realWatchlist.length}</small>
+      </button>
+    `;
+    return;
+  }
+
   const groupButtons = state.groups
     .map((group) => {
       const count = group.symbols.length;
@@ -1587,7 +1646,7 @@ function renderGroups() {
 }
 
 function renderPortfolioSummary() {
-  const totals = portfolioTotals();
+  const totals = portfolioTotals(isRealMode() ? Object.keys(state.realPositions) : currentSymbols());
   const pnlClass = totals.pnl >= 0 ? "up" : "down";
   const pnlPercent = totals.cost > 0 ? (totals.pnl / totals.cost) * 100 : 0;
 
@@ -1625,7 +1684,7 @@ function renderPortfolioSummary() {
 function renderAccountSummary() {
   renderPortfolioMode();
   if (isRealMode()) {
-    const totals = portfolioTotals();
+    const totals = portfolioTotals(Object.keys(state.realPositions));
     const pnlClass = totals.pnl >= 0 ? "up" : "down";
     const pnlPercent = totals.cost > 0 ? (totals.pnl / totals.cost) * 100 : 0;
     elements.accountSummary.innerHTML = `
@@ -1684,13 +1743,17 @@ function renderPortfolioMode() {
     button.classList.toggle("active", button.dataset.portfolioMode === state.portfolioMode);
   });
   elements.apiKeyPanel.hidden = isRealMode();
-  elements.form.hidden = isRealMode();
-  elements.realPositionForm.hidden = isPaperMode();
-  elements.groupTabs.hidden = isRealMode();
-  elements.groupLabel.hidden = isRealMode();
-  elements.watchlistAddTitle.textContent = isRealMode()
-    ? "Add or update real holding"
-    : "Add stock to selected group";
+  elements.form.hidden = isRealOwnedTab();
+  elements.realPositionForm.hidden = !isRealOwnedTab();
+  elements.groupTabs.hidden = false;
+  elements.groupLabel.hidden = false;
+  elements.groupLabel.textContent = isRealMode() ? "Real portfolio" : "Groups";
+  elements.input.placeholder = isRealWatchlistTab() ? "TSLA" : "AAPL";
+  elements.watchlistAddTitle.textContent = isRealOwnedTab()
+    ? "Add or update owned stock"
+    : isRealWatchlistTab()
+      ? "Add stock to real watch list"
+      : "Add stock to selected group";
 }
 
 function resetPaperAccount() {
@@ -1730,7 +1793,9 @@ function renderWatchlist() {
   if (!symbols.length) {
     elements.stockList.innerHTML = `<div class="empty-state">${
       isRealMode()
-        ? "Add your first real holding with shares and average cost."
+        ? isRealOwnedTab()
+          ? "Add your first real holding with shares and average cost."
+          : "Add your first real watchlist stock."
         : `Add a ticker symbol to ${escapeHtml(group.name)}.`
     }</div>`;
     return;
@@ -2280,6 +2345,7 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
 
   const resolvedSymbol = cleanSymbol(quote.symbol);
   state.realPositions[resolvedSymbol] = { shares: positionShares, avgCost: positionAvgCost };
+  state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
   state.quotes.set(resolvedSymbol, quote);
   state.selected = resolvedSymbol;
   saveGroups();
@@ -2302,8 +2368,56 @@ function setPortfolioMode(mode) {
   }
 }
 
+function setRealTab(tab) {
+  state.activeRealTab = tab === "watchlist" ? "watchlist" : "owned";
+  state.selected = currentSymbols()[0] || null;
+  saveGroups();
+  renderWatchlist();
+  renderSelectedQuote();
+  if (state.selected) {
+    refreshQuotes();
+    selectStock(state.selected);
+  }
+}
+
+async function addRealWatchlistSymbol(symbol) {
+  const cleaned = cleanSymbol(symbol);
+  if (!cleaned) return;
+  if (state.realWatchlist.includes(cleaned)) {
+    setAddStockMessage(`${cleaned} is already in the real watch list.`, "error");
+    return;
+  }
+  if (state.realPositions[cleaned]) {
+    setAddStockMessage(`${cleaned} is already in Own stock.`, "error");
+    return;
+  }
+
+  setAddStockMessage(`Checking ${cleaned}...`);
+  const quote = await lookupStockBeforeAdd(cleaned);
+  if (!quote) return;
+
+  const resolvedSymbol = cleanSymbol(quote.symbol);
+  if (!state.realWatchlist.includes(resolvedSymbol) && !state.realPositions[resolvedSymbol]) {
+    state.realWatchlist = [resolvedSymbol, ...state.realWatchlist];
+  }
+  state.quotes.set(resolvedSymbol, quote);
+  state.selected = resolvedSymbol;
+  saveGroups();
+  renderWatchlist();
+  renderSelectedQuote();
+  setAddStockMessage(`${resolvedSymbol} added to real watch list.`, "success");
+  await refreshQuotes();
+  await refreshNews(resolvedSymbol);
+}
+
 elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isRealWatchlistTab()) {
+    await addRealWatchlistSymbol(elements.input.value);
+    elements.input.value = "";
+    return;
+  }
+
   const group = activeGroup();
   const symbol = cleanSymbol(elements.input.value);
   if (!symbol || group.symbols.includes(symbol)) {
@@ -2435,6 +2549,13 @@ elements.groupTabs.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   if (!button) return;
 
+  if (button.dataset.realTab) {
+    setRealTab(button.dataset.realTab);
+    return;
+  }
+
+  if (isRealMode()) return;
+
   if (button.dataset.action === "show-group-input") {
     showGroupInput();
     return;
@@ -2483,6 +2604,7 @@ elements.groupTabs.addEventListener("click", async (event) => {
 });
 
 elements.groupTabs.addEventListener("pointerdown", (event) => {
+  if (isRealMode()) return;
   const button = event.target.closest('button[data-action="show-group-input"]');
   if (!button) return;
   event.preventDefault();
@@ -2490,6 +2612,7 @@ elements.groupTabs.addEventListener("pointerdown", (event) => {
 });
 
 elements.groupTabs.addEventListener("dblclick", (event) => {
+  if (isRealMode()) return;
   const button = event.target.closest("button[data-group-id]");
   if (!button) return;
 
@@ -2501,6 +2624,7 @@ elements.groupTabs.addEventListener("dblclick", (event) => {
 });
 
 elements.groupTabs.addEventListener("submit", async (event) => {
+  if (isRealMode()) return;
   const renameForm = event.target.closest(".rename-group-tab");
   if (renameForm) {
     event.preventDefault();
@@ -2533,6 +2657,7 @@ elements.groupTabs.addEventListener("submit", async (event) => {
 });
 
 elements.groupTabs.addEventListener("focusout", (event) => {
+  if (isRealMode()) return;
   const addForm = event.target.closest(".add-group-tab");
   if (addForm) {
     window.setTimeout(() => {
@@ -2653,7 +2778,11 @@ elements.stockList.addEventListener("click", async (event) => {
   const symbol = button.dataset.symbol;
   if (button.dataset.action === "remove") {
     if (isRealMode()) {
-      delete state.realPositions[symbol];
+      if (isRealOwnedTab()) {
+        delete state.realPositions[symbol];
+      } else {
+        state.realWatchlist = state.realWatchlist.filter((item) => item !== symbol);
+      }
       state.quotes.delete(symbol);
       state.selected = currentSymbols()[0] || null;
       saveGroups();
