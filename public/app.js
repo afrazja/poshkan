@@ -232,7 +232,43 @@ function currentSymbols() {
   return activeGroup()?.symbols || [];
 }
 
+function ensurePositionSymbolsVisible() {
+  const heldSymbols = [
+    ...new Set(
+      state.groups.flatMap((group) =>
+        Object.entries(group.portfolio || {})
+          .filter(([, position]) => Number(position?.shares) > 0)
+          .map(([symbol]) => cleanSymbol(symbol))
+      )
+    )
+  ].filter(Boolean);
+  const watchlistSymbols = new Set(state.groups.flatMap((group) => group.symbols || []));
+  const missingSymbols = heldSymbols.filter((symbol) => !watchlistSymbols.has(symbol));
+  if (!missingSymbols.length) return;
+
+  let positionsGroup = state.groups.find((group) => group.name === "Paper positions");
+  if (!positionsGroup) {
+    positionsGroup = {
+      id: `group-${Date.now().toString(36)}-positions`,
+      name: "Paper positions",
+      symbols: [],
+      portfolio: {},
+      alerts: {}
+    };
+    state.groups.push(positionsGroup);
+  }
+
+  positionsGroup.symbols = [...new Set([...positionsGroup.symbols, ...missingSymbols])];
+  missingSymbols.forEach((symbol) => {
+    const sourceGroup = state.groups.find((group) => group.portfolio?.[symbol]);
+    if (sourceGroup?.portfolio?.[symbol]) {
+      positionsGroup.portfolio[symbol] = sourceGroup.portfolio[symbol];
+    }
+  });
+}
+
 function saveGroups() {
+  ensurePositionSymbolsVisible();
   localStorage.setItem(GROUPS_KEY, JSON.stringify(state.groups));
   localStorage.setItem(ACTIVE_GROUP_KEY, state.activeGroupId);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSymbols()));
@@ -799,6 +835,7 @@ async function loadCloudData() {
             alerts: { ...alertMap }
           }))
         : [{ id: "main", name: "Main", symbols: DEFAULT_SYMBOLS, portfolio: {}, alerts: {} }];
+    ensurePositionSymbolsVisible();
 
     state.activeGroupId = state.groups[0]?.id || "main";
     state.selected = currentSymbols()[0] || null;

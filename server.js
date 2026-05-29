@@ -689,6 +689,41 @@ async function savePosition(actor, symbol, position) {
   });
 }
 
+async function ensurePaperPositionWatchlist(actor, symbol) {
+  const groups = await actorRequest(
+    actor,
+    `/rest/v1/watchlists?select=id&user_id=eq.${encodeURIComponent(actor.user.id)}&name=eq.${encodeURIComponent(
+      "Paper positions"
+    )}&limit=1`,
+    { method: "GET" }
+  );
+  let watchlistId = groups?.[0]?.id;
+  if (!watchlistId) {
+    const created = await actorRequest(actor, "/rest/v1/watchlists?select=id", {
+      method: "POST",
+      headers: { prefer: "return=representation" },
+      body: JSON.stringify({ user_id: actor.user.id, name: "Paper positions", sort_order: 999 })
+    });
+    watchlistId = created?.[0]?.id;
+  }
+  if (!watchlistId) return;
+
+  const existing = await actorRequest(
+    actor,
+    `/rest/v1/watchlist_stocks?select=watchlist_id,symbol&watchlist_id=eq.${encodeURIComponent(
+      watchlistId
+    )}&symbol=eq.${encodeURIComponent(symbol)}&limit=1`,
+    { method: "GET" }
+  );
+  if (existing?.length) return;
+
+  await actorRequest(actor, "/rest/v1/watchlist_stocks", {
+    method: "POST",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify({ watchlist_id: watchlistId, symbol })
+  });
+}
+
 async function paperTradeHandler(req, res) {
   if (req.method !== "POST") {
     return json(res, 405, { error: "Use POST for paper trades." });
@@ -745,6 +780,9 @@ async function paperTradeHandler(req, res) {
 
     await saveAccount(actor, account);
     await savePosition(actor, quote.symbol, position);
+    if (side === "buy" && position.shares > 0) {
+      await ensurePaperPositionWatchlist(actor, quote.symbol);
+    }
     await actorRequest(actor, "/rest/v1/trades", {
       method: "POST",
       headers: { prefer: "return=minimal" },
