@@ -689,12 +689,10 @@ async function savePosition(actor, symbol, position) {
   });
 }
 
-async function ensurePaperPositionWatchlist(actor, symbol) {
+async function ensureFirstWatchlistSymbol(actor, symbol) {
   const groups = await actorRequest(
     actor,
-    `/rest/v1/watchlists?select=id&user_id=eq.${encodeURIComponent(actor.user.id)}&name=eq.${encodeURIComponent(
-      "Paper positions"
-    )}&limit=1`,
+    `/rest/v1/watchlists?select=id&user_id=eq.${encodeURIComponent(actor.user.id)}&order=sort_order.asc&limit=1`,
     { method: "GET" }
   );
   let watchlistId = groups?.[0]?.id;
@@ -702,7 +700,7 @@ async function ensurePaperPositionWatchlist(actor, symbol) {
     const created = await actorRequest(actor, "/rest/v1/watchlists?select=id", {
       method: "POST",
       headers: { prefer: "return=representation" },
-      body: JSON.stringify({ user_id: actor.user.id, name: "Paper positions", sort_order: 999 })
+      body: JSON.stringify({ user_id: actor.user.id, name: "Main", sort_order: 0 })
     });
     watchlistId = created?.[0]?.id;
   }
@@ -781,7 +779,7 @@ async function paperTradeHandler(req, res) {
     await saveAccount(actor, account);
     await savePosition(actor, quote.symbol, position);
     if (side === "buy" && position.shares > 0) {
-      await ensurePaperPositionWatchlist(actor, quote.symbol);
+      await ensureFirstWatchlistSymbol(actor, quote.symbol);
     }
     await actorRequest(actor, "/rest/v1/trades", {
       method: "POST",

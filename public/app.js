@@ -242,29 +242,25 @@ function ensurePositionSymbolsVisible() {
       )
     )
   ].filter(Boolean);
-  const watchlistSymbols = new Set(state.groups.flatMap((group) => group.symbols || []));
-  const missingSymbols = heldSymbols.filter((symbol) => !watchlistSymbols.has(symbol));
+  const firstGroup = state.groups[0] || activeGroup();
+  const paperGroup = state.groups.find((group) => group.name === "Paper positions");
+  const firstSymbols = new Set(firstGroup.symbols || []);
+  const paperSymbols = new Set((paperGroup?.symbols || []).map(cleanSymbol));
+  const missingSymbols = heldSymbols.filter((symbol) => !firstSymbols.has(symbol) || paperSymbols.has(symbol));
   if (!missingSymbols.length) return;
 
-  let positionsGroup = state.groups.find((group) => group.name === "Paper positions");
-  if (!positionsGroup) {
-    positionsGroup = {
-      id: `group-${Date.now().toString(36)}-positions`,
-      name: "Paper positions",
-      symbols: [],
-      portfolio: {},
-      alerts: {}
-    };
-    state.groups.push(positionsGroup);
-  }
-
-  positionsGroup.symbols = [...new Set([...positionsGroup.symbols, ...missingSymbols])];
+  firstGroup.symbols = [...new Set([...firstGroup.symbols, ...missingSymbols])];
   missingSymbols.forEach((symbol) => {
     const sourceGroup = state.groups.find((group) => group.portfolio?.[symbol]);
     if (sourceGroup?.portfolio?.[symbol]) {
-      positionsGroup.portfolio[symbol] = sourceGroup.portfolio[symbol];
+      firstGroup.portfolio ||= {};
+      firstGroup.portfolio[symbol] = sourceGroup.portfolio[symbol];
     }
   });
+
+  state.groups = state.groups.filter(
+    (group) => group.name !== "Paper positions" || group.symbols.some((symbol) => !firstGroup.symbols.includes(symbol))
+  );
 }
 
 function saveGroups() {
