@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
@@ -90,6 +91,15 @@ function supabaseConfig() {
   return { url, anonKey };
 }
 
+function supabaseServiceConfig() {
+  const { url } = supabaseConfig();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for paper API keys");
+  }
+  return { url, serviceRoleKey };
+}
+
 function bearerToken(req) {
   const header = req.headers.authorization || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -118,12 +128,103 @@ async function supabaseRequest(path, token, options = {}) {
   return data;
 }
 
+async function supabaseAdminRequest(path, options = {}) {
+  const { url, serviceRoleKey } = supabaseServiceConfig();
+  const response = await fetch(`${url}${path}`, {
+    ...options,
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      "content-type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error_description || `Supabase returned ${response.status}`);
+  }
+  return data;
+}
+
 async function currentUser(token) {
   const user = await supabaseRequest("/auth/v1/user", token, { method: "GET" });
   if (!user?.id) {
     throw new Error("Could not verify user session");
   }
   return user;
+}
+
+function hashSecret(secret) {
+  return createHash("sha256").update(secret).digest("hex");
+}
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""), "utf8");
+  const rightBuffer = Buffer.from(String(right || ""), "utf8");
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function generatePaperCredentials() {
+  return {
+    key: `pk_paper_${randomBytes(12).toString("hex")}`,
+    secret: `sk_paper_${randomBytes(24).toString("hex")}`
+  };
+}
+
+function actorRequest(actor, path, options = {}) {
+  return actor.admin ? supabaseAdminRequest(path, options) : supabaseRequest(path, actor.token, options);
+}
+
+async function sessionActor(req) {
+  const token = bearerToken(req);
+  return { token, user: await currentUser(token), admin: false };
+}
+
+async function apiKeyActor(req) {
+  const keyPrefix = String(req.headers["x-poshkan-key"] || "");
+  const secret = String(req.headers["x-poshkan-secret"] || "");
+  if (!keyPrefix || !secret) return null;
+
+  const rows = await supabaseAdminRequest(
+    `/rest/v1/api_keys?select=id,user_id,key_prefix,secret_hash,permissions,status&key_prefix=eq.${encodeURIComponent(
+      keyPrefix
+    )}&status=eq.active&limit=1`,
+    { method: "GET" }
+  );
+  const record = rows?.[0];
+  if (!record || !safeEqual(hashSecret(secret), record.secret_hash)) {
+    throw new Error("Invalid Poshkan API key or secret");
+  }
+
+  const permissions = Array.isArray(record.permissions) ? record.permissions : [];
+  if (!permissions.includes("paper:trade") && !permissions.includes("paper:read")) {
+    throw new Error("Paper API key does not have paper permissions");
+  }
+
+  await supabaseAdminRequest(`/rest/v1/api_keys?id=eq.${encodeURIComponent(record.id)}`, {
+    method: "PATCH",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify({ last_used_at: new Date().toISOString() })
+  });
+
+  return {
+    admin: true,
+    apiKeyId: record.id,
+    user: { id: record.user_id, user_metadata: {} },
+    permissions
+  };
+}
+
+async function paperActor(req, requiredPermission) {
+  const apiActor = await apiKeyActor(req);
+  if (apiActor) {
+    if (!apiActor.permissions.includes(requiredPermission)) {
+      throw new Error(`Paper API key is missing ${requiredPermission}`);
+    }
+    return apiActor;
+  }
+  return sessionActor(req);
 }
 
 async function fetchText(url) {
@@ -503,10 +604,10 @@ async function newsHandler(req, res) {
   }
 }
 
-async function getAccount(token, user) {
-  const accountRows = await supabaseRequest(
-    `/rest/v1/accounts?select=cash,realized_pnl&user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
-    token,
+async function getAccount(actor) {
+  const accountRows = await actorRequest(
+    actor,
+    `/rest/v1/accounts?select=cash,realized_pnl&user_id=eq.${encodeURIComponent(actor.user.id)}&limit=1`,
     { method: "GET" }
   );
   const existing = accountRows?.[0];
@@ -517,21 +618,21 @@ async function getAccount(token, user) {
     };
   }
 
-  const startingCash = Math.min(Math.max(Number(user.user_metadata?.starting_cash) || 100000, 1000), 10000000);
-  await supabaseRequest("/rest/v1/accounts", token, {
+  const startingCash = Math.min(Math.max(Number(actor.user.user_metadata?.starting_cash) || 100000, 1000), 10000000);
+  await actorRequest(actor, "/rest/v1/accounts", {
     method: "POST",
     headers: { prefer: "return=minimal" },
-    body: JSON.stringify({ user_id: user.id, cash: startingCash, realized_pnl: 0 })
+    body: JSON.stringify({ user_id: actor.user.id, cash: startingCash, realized_pnl: 0 })
   });
   return { cash: startingCash, realizedPnl: 0 };
 }
 
-async function getPosition(token, userId, symbol) {
-  const rows = await supabaseRequest(
-    `/rest/v1/positions?select=symbol,shares,avg_cost&user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(
-      symbol
-    )}&limit=1`,
-    token,
+async function getPosition(actor, symbol) {
+  const rows = await actorRequest(
+    actor,
+    `/rest/v1/positions?select=symbol,shares,avg_cost&user_id=eq.${encodeURIComponent(
+      actor.user.id
+    )}&symbol=eq.${encodeURIComponent(symbol)}&limit=1`,
     { method: "GET" }
   );
   const position = rows?.[0];
@@ -542,8 +643,8 @@ async function getPosition(token, userId, symbol) {
   };
 }
 
-async function saveAccount(token, userId, account) {
-  await supabaseRequest(`/rest/v1/accounts?user_id=eq.${encodeURIComponent(userId)}`, token, {
+async function saveAccount(actor, account) {
+  await actorRequest(actor, `/rest/v1/accounts?user_id=eq.${encodeURIComponent(actor.user.id)}`, {
     method: "PATCH",
     headers: { prefer: "return=minimal" },
     body: JSON.stringify({
@@ -553,20 +654,20 @@ async function saveAccount(token, userId, account) {
   });
 }
 
-async function savePosition(token, userId, symbol, position) {
+async function savePosition(actor, symbol, position) {
   if (position.shares <= 0) {
-    await supabaseRequest(
-      `/rest/v1/positions?user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(symbol)}`,
-      token,
+    await actorRequest(
+      actor,
+      `/rest/v1/positions?user_id=eq.${encodeURIComponent(actor.user.id)}&symbol=eq.${encodeURIComponent(symbol)}`,
       { method: "DELETE", headers: { prefer: "return=minimal" } }
     );
     return;
   }
 
   if (position.exists) {
-    await supabaseRequest(
-      `/rest/v1/positions?user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(symbol)}`,
-      token,
+    await actorRequest(
+      actor,
+      `/rest/v1/positions?user_id=eq.${encodeURIComponent(actor.user.id)}&symbol=eq.${encodeURIComponent(symbol)}`,
       {
         method: "PATCH",
         headers: { prefer: "return=minimal" },
@@ -576,11 +677,11 @@ async function savePosition(token, userId, symbol, position) {
     return;
   }
 
-  await supabaseRequest("/rest/v1/positions", token, {
+  await actorRequest(actor, "/rest/v1/positions", {
     method: "POST",
     headers: { prefer: "return=minimal" },
     body: JSON.stringify({
-      user_id: userId,
+      user_id: actor.user.id,
       symbol,
       shares: position.shares,
       avg_cost: position.avgCost
@@ -594,8 +695,7 @@ async function paperTradeHandler(req, res) {
   }
 
   try {
-    const token = bearerToken(req);
-    const user = await currentUser(token);
+    const actor = await paperActor(req, "paper:trade");
     const body = await readJsonBody(req);
     const symbol = cleanSymbol(body.symbol);
     const side = String(body.side || "").toLowerCase();
@@ -611,8 +711,8 @@ async function paperTradeHandler(req, res) {
       return json(res, 422, { error: `No usable market price for ${symbol}.` });
     }
 
-    const account = await getAccount(token, user);
-    const position = await getPosition(token, user.id, quote.symbol);
+    const account = await getAccount(actor);
+    const position = await getPosition(actor, quote.symbol);
     let realizedPnl = 0;
 
     if (side === "buy") {
@@ -643,13 +743,13 @@ async function paperTradeHandler(req, res) {
     position.shares = Math.max(0, Number(position.shares.toFixed(6)));
     position.avgCost = Math.max(0, Number(position.avgCost.toFixed(4)));
 
-    await saveAccount(token, user.id, account);
-    await savePosition(token, user.id, quote.symbol, position);
-    await supabaseRequest("/rest/v1/trades", token, {
+    await saveAccount(actor, account);
+    await savePosition(actor, quote.symbol, position);
+    await actorRequest(actor, "/rest/v1/trades", {
       method: "POST",
       headers: { prefer: "return=minimal" },
       body: JSON.stringify({
-        user_id: user.id,
+        user_id: actor.user.id,
         symbol: quote.symbol,
         side,
         shares,
@@ -687,19 +787,18 @@ async function paperAccountHandler(req, res) {
   }
 
   try {
-    const token = bearerToken(req);
-    const user = await currentUser(token);
-    const account = await getAccount(token, user);
-    const positions = await supabaseRequest(
-      `/rest/v1/positions?select=symbol,shares,avg_cost&user_id=eq.${encodeURIComponent(user.id)}&order=symbol.asc`,
-      token,
+    const actor = await paperActor(req, "paper:read");
+    const account = await getAccount(actor);
+    const positions = await actorRequest(
+      actor,
+      `/rest/v1/positions?select=symbol,shares,avg_cost&user_id=eq.${encodeURIComponent(actor.user.id)}&order=symbol.asc`,
       { method: "GET" }
     );
-    const trades = await supabaseRequest(
+    const trades = await actorRequest(
+      actor,
       `/rest/v1/trades?select=symbol,side,shares,price,realized_pnl,created_at&user_id=eq.${encodeURIComponent(
-        user.id
+        actor.user.id
       )}&order=created_at.desc&limit=25`,
-      token,
       { method: "GET" }
     );
 
@@ -719,10 +818,104 @@ async function paperAccountHandler(req, res) {
   }
 }
 
+async function listApiKeysHandler(req, res) {
+  if (req.method !== "GET") {
+    return json(res, 405, { error: "Use GET for API keys." });
+  }
+
+  try {
+    const actor = await sessionActor(req);
+    const keys = await supabaseRequest(
+      `/rest/v1/api_keys?select=id,name,key_prefix,permissions,status,last_used_at,created_at,revoked_at&user_id=eq.${encodeURIComponent(
+        actor.user.id
+      )}&order=created_at.desc`,
+      actor.token,
+      { method: "GET" }
+    );
+    return json(res, 200, { keys: keys || [] });
+  } catch (error) {
+    const status = error.message === "Missing user session" ? 401 : 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
+async function createApiKeyHandler(req, res) {
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "Use POST to create API keys." });
+  }
+
+  try {
+    const actor = await sessionActor(req);
+    const body = await readJsonBody(req);
+    const name = String(body.name || "Claude paper key").trim().slice(0, 80) || "Claude paper key";
+    const credentials = generatePaperCredentials();
+    const permissions = ["paper:read", "paper:trade"];
+
+    const rows = await supabaseRequest("/rest/v1/api_keys?select=id,name,key_prefix,permissions,status,created_at", actor.token, {
+      method: "POST",
+      headers: { prefer: "return=representation" },
+      body: JSON.stringify({
+        user_id: actor.user.id,
+        name,
+        key_prefix: credentials.key,
+        secret_hash: hashSecret(credentials.secret),
+        permissions,
+        status: "active"
+      })
+    });
+
+    return json(res, 201, {
+      key: rows?.[0],
+      credentials: {
+        endpoint: `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
+        key: credentials.key,
+        secret: credentials.secret
+      }
+    });
+  } catch (error) {
+    const status = error.message === "Missing user session" ? 401 : 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
+async function revokeApiKeyHandler(req, res) {
+  if (req.method !== "POST" && req.method !== "DELETE") {
+    return json(res, 405, { error: "Use POST or DELETE to revoke API keys." });
+  }
+
+  try {
+    const actor = await sessionActor(req);
+    const body = req.method === "POST" ? await readJsonBody(req) : {};
+    const id = String(body.id || getQuery(req).get("id") || "");
+    if (!id) {
+      return json(res, 400, { error: "Missing API key id." });
+    }
+
+    await supabaseRequest(
+      `/rest/v1/api_keys?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(actor.user.id)}`,
+      actor.token,
+      {
+        method: "PATCH",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify({
+          status: "revoked",
+          revoked_at: new Date().toISOString()
+        })
+      }
+    );
+
+    return json(res, 200, { ok: true });
+  } catch (error) {
+    const status = error.message === "Missing user session" ? 401 : 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
 function configHandler(req, res) {
   return json(res, 200, {
     supabaseUrl: process.env.SUPABASE_URL || "",
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ""
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
+    paperApiKeysEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
   });
 }
 
@@ -751,6 +944,9 @@ const server = http.createServer(async (req, res) => {
     if (path === "/api/quotes") return quotesHandler(req, res);
     if (path === "/api/history") return historyHandler(req, res);
     if (path === "/api/news") return newsHandler(req, res);
+    if (path === "/api/keys") return listApiKeysHandler(req, res);
+    if (path === "/api/keys/create") return createApiKeyHandler(req, res);
+    if (path === "/api/keys/revoke") return revokeApiKeyHandler(req, res);
     if (path === "/api/paper/account") return paperAccountHandler(req, res);
     if (path === "/api/paper/trade") return paperTradeHandler(req, res);
     if (path === "/api/config") return configHandler(req, res);

@@ -10,7 +10,10 @@
 4. Add environment variables:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
 5. Deploy the service.
+
+`SUPABASE_SERVICE_ROLE_KEY` is server-only. It is required for validating Poshkan paper API keys used by external tools such as Claude. Do not expose it in browser code.
 
 ## Domain
 

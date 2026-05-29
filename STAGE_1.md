@@ -12,3 +12,19 @@ At this stage:
 - If the user is not signed in, the app can still use local-only paper trading as a fallback.
 
 Stage 1 does not include Claude chat, autonomous trading rules, AI settings, or AI action logs yet.
+
+## Poshkan Paper API Keys
+
+After Stage 1, users can generate limited paper API credentials for external tools.
+
+External tools call:
+
+- `GET /api/paper/account`
+- `POST /api/paper/trade`
+
+with headers:
+
+- `X-Poshkan-Key`
+- `X-Poshkan-Secret`
+
+These keys are scoped to paper trading only. The secret is shown once and only its hash is stored in Supabase.

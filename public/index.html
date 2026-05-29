@@ -115,6 +115,17 @@
         <button id="sign-out" class="sign-out" type="button">Sign out</button>
       </section>
       <section id="account-summary" class="account-summary" aria-live="polite"></section>
+      <section id="api-key-panel" class="api-key-panel" aria-live="polite">
+        <div>
+          <p class="eyebrow">Claude paper API</p>
+          <h2>Paper trading key</h2>
+          <span>Generate a limited key Claude can use for fake portfolio trades.</span>
+        </div>
+        <button id="create-api-key" type="button">Generate key</button>
+        <div id="api-key-secret" class="api-key-secret" hidden></div>
+        <div id="api-key-list" class="api-key-list"></div>
+        <p id="api-key-message" class="api-key-message"></p>
+      </section>
 
       <section class="status-row" aria-live="polite">
         <div>

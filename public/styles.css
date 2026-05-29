@@ -462,6 +462,102 @@ button {
   font-size: 1.05rem;
 }
 
+.api-key-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(24, 28, 32, 0.82);
+  padding: 14px;
+}
+
+.api-key-panel h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.api-key-panel span,
+.api-key-message,
+.api-key-list small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.api-key-panel button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 850;
+  padding: 0 12px;
+}
+
+.api-key-secret {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(240, 196, 106, 0.32);
+  border-radius: 8px;
+  background: rgba(240, 196, 106, 0.08);
+  padding: 12px;
+}
+
+.api-key-secret[hidden] {
+  display: none;
+}
+
+.api-key-secret code {
+  display: block;
+  overflow-x: auto;
+  border-radius: 7px;
+  background: #121619;
+  color: var(--text);
+  padding: 8px;
+  white-space: nowrap;
+}
+
+.api-key-list {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.api-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid rgba(238, 243, 245, 0.08);
+  padding-top: 8px;
+}
+
+.api-key-row strong,
+.api-key-row small {
+  display: block;
+}
+
+.api-key-row.revoked {
+  opacity: 0.62;
+}
+
+.api-key-message {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  margin: 0;
+}
+
+.api-key-message.error {
+  color: var(--red);
+}
+
+.api-key-message.success {
+  color: var(--green);
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--cyan);
@@ -1550,6 +1646,11 @@ h2 {
   }
 
   .account-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .api-key-panel,
+  .api-key-row {
     grid-template-columns: 1fr;
   }
 

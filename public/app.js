@@ -31,6 +31,7 @@ const state = {
   firedAlerts: new Set(),
   supabase: null,
   session: null,
+  paperApiKeysEnabled: false,
   cloudReady: false,
   cloudSaving: false,
   cloudSaveQueued: false,
@@ -59,6 +60,11 @@ const elements = {
   watchlist: document.querySelector(".watchlist"),
   workspace: document.querySelector(".workspace"),
   accountSummary: document.querySelector("#account-summary"),
+  apiKeyPanel: document.querySelector("#api-key-panel"),
+  apiKeyCreate: document.querySelector("#create-api-key"),
+  apiKeySecret: document.querySelector("#api-key-secret"),
+  apiKeyList: document.querySelector("#api-key-list"),
+  apiKeyMessage: document.querySelector("#api-key-message"),
   portfolioSummary: document.querySelector("#portfolio-summary"),
   stockList: document.querySelector("#stock-list"),
   refresh: document.querySelector("#refresh-now"),
@@ -609,6 +615,19 @@ async function getJson(url) {
   return response.json();
 }
 
+async function getJsonAuth(url) {
+  const response = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${state.session?.access_token || ""}`
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || `Request failed: ${response.status}`);
+  }
+  return body;
+}
+
 async function postJson(url, payload, { auth = false } = {}) {
   const headers = { "content-type": "application/json" };
   if (auth && state.session?.access_token) {
@@ -646,6 +665,11 @@ function setAuthMode(mode) {
 function setAddStockMessage(message, type = "") {
   elements.addStockMessage.textContent = message || "";
   elements.addStockMessage.className = `add-stock-message ${type}`.trim();
+}
+
+function setApiKeyMessage(message, type = "") {
+  elements.apiKeyMessage.textContent = message || "";
+  elements.apiKeyMessage.className = `api-key-message ${type}`.trim();
 }
 
 async function ensureUuidGroupIds() {
@@ -897,11 +921,50 @@ function renderAuthState() {
   }
 }
 
+function renderApiKeys(keys = []) {
+  if (!keys.length) {
+    elements.apiKeyList.innerHTML = `<div class="empty-state">No Claude paper keys yet.</div>`;
+    return;
+  }
+
+  elements.apiKeyList.innerHTML = keys
+    .map((key) => {
+      const isActive = key.status === "active";
+      const lastUsed = key.last_used_at ? new Date(key.last_used_at).toLocaleString() : "Never used";
+      return `
+        <div class="api-key-row ${isActive ? "" : "revoked"}">
+          <div>
+            <strong>${escapeHtml(key.name || "Claude paper key")}</strong>
+            <small>${escapeHtml(key.key_prefix)} | ${escapeHtml(key.status)} | Last used: ${escapeHtml(lastUsed)}</small>
+          </div>
+          ${
+            isActive
+              ? `<button type="button" data-api-key-revoke="${escapeHtml(key.id)}">Revoke</button>`
+              : ""
+          }
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function loadApiKeys() {
+  if (!state.session?.access_token) return;
+  try {
+    const data = await getJsonAuth("/api/keys");
+    renderApiKeys(data.keys || []);
+  } catch (error) {
+    setApiKeyMessage(error.message, "error");
+  }
+}
+
 function clearSignedOutState(message = "Signed out.") {
   state.session = null;
   state.cloudReady = false;
   state.cloudSaving = false;
   state.cloudSaveQueued = false;
+  elements.apiKeyList.innerHTML = "";
+  elements.apiKeySecret.hidden = true;
   setAuthMessage(message, "success");
   renderAuthState();
 }
@@ -922,6 +985,11 @@ async function initializeAuth() {
   }
 
   state.supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+  state.paperApiKeysEnabled = Boolean(config.paperApiKeysEnabled);
+  elements.apiKeyCreate.disabled = !state.paperApiKeysEnabled;
+  if (!state.paperApiKeysEnabled) {
+    setApiKeyMessage("Add SUPABASE_SERVICE_ROLE_KEY on the server to enable Claude paper API keys.", "error");
+  }
   const { data, error } = await state.supabase.auth.getSession();
   if (error) {
     setAuthMessage(error.message, "error");
@@ -930,6 +998,7 @@ async function initializeAuth() {
   renderAuthState();
   if (state.session) {
     await loadCloudData();
+    await loadApiKeys();
     await refreshQuotes();
     if (state.selected) refreshNews(state.selected);
   }
@@ -940,6 +1009,7 @@ async function initializeAuth() {
     renderAuthState();
     if (session) {
       await loadCloudData();
+      await loadApiKeys();
       refreshQuotes().then(() => {
         if (state.selected) refreshNews(state.selected);
       });
@@ -2156,6 +2226,50 @@ elements.refresh.addEventListener("click", () => refreshQuotes());
 elements.accountSummary.addEventListener("click", (event) => {
   if (event.target.closest("#reset-paper-account")) {
     resetPaperAccount();
+  }
+});
+
+elements.apiKeyCreate.addEventListener("click", async () => {
+  if (!state.session?.access_token) return;
+  if (!state.paperApiKeysEnabled) {
+    setApiKeyMessage("Add SUPABASE_SERVICE_ROLE_KEY on the server to enable Claude paper API keys.", "error");
+    return;
+  }
+  elements.apiKeyCreate.disabled = true;
+  setApiKeyMessage("Generating paper API key...");
+  try {
+    const data = await postJson("/api/keys/create", { name: "Claude paper key" }, { auth: true });
+    elements.apiKeySecret.hidden = false;
+    elements.apiKeySecret.innerHTML = `
+      <strong>Copy this secret now. It will not be shown again.</strong>
+      <span>Endpoint</span>
+      <code>${escapeHtml(data.credentials.endpoint)}</code>
+      <span>Key</span>
+      <code>${escapeHtml(data.credentials.key)}</code>
+      <span>Secret</span>
+      <code>${escapeHtml(data.credentials.secret)}</code>
+      <span>Claude can call <code>/api/paper/account</code> and <code>/api/paper/trade</code> with headers <code>X-Poshkan-Key</code> and <code>X-Poshkan-Secret</code>.</span>
+    `;
+    setApiKeyMessage("Paper API key generated.", "success");
+    await loadApiKeys();
+  } catch (error) {
+    setApiKeyMessage(error.message, "error");
+  } finally {
+    elements.apiKeyCreate.disabled = false;
+  }
+});
+
+elements.apiKeyList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-api-key-revoke]");
+  if (!button || !state.session?.access_token) return;
+  setApiKeyMessage("Revoking key...");
+  try {
+    await postJson("/api/keys/revoke", { id: button.dataset.apiKeyRevoke }, { auth: true });
+    setApiKeyMessage("Paper API key revoked.", "success");
+    elements.apiKeySecret.hidden = true;
+    await loadApiKeys();
+  } catch (error) {
+    setApiKeyMessage(error.message, "error");
   }
 });
 
