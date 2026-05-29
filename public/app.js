@@ -913,6 +913,38 @@ function applyResolvedSymbols(quotes) {
   }
 }
 
+function invalidSymbolMessage(invalids = []) {
+  const invalid = invalids[0];
+  if (!invalid) return "";
+  const suggestions = (invalid.suggestions || [])
+    .slice(0, 4)
+    .map((item) => {
+      const name = item.name ? ` ${item.name}` : "";
+      const exchange = item.exchange ? `, ${item.exchange}` : "";
+      return `${item.symbol}${name}${exchange}`;
+    })
+    .join(" | ");
+  return suggestions
+    ? `${invalid.symbol} is not an available stock symbol. Try: ${suggestions}`
+    : `${invalid.symbol} is not an available stock symbol. Check the ticker and exchange suffix.`;
+}
+
+async function lookupStockBeforeAdd(symbol) {
+  const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbol)}`);
+  if (data.invalids?.length || !data.quotes?.length) {
+    elements.marketStatus.textContent = invalidSymbolMessage(data.invalids) || `${symbol} is not an available stock symbol.`;
+    return null;
+  }
+
+  const quote = data.quotes[0];
+  if (!quote?.symbol || !Number.isFinite(quote.regularMarketPrice)) {
+    elements.marketStatus.textContent = `${symbol} is not an available stock symbol.`;
+    return null;
+  }
+
+  return quote;
+}
+
 async function refreshQuotes({ quiet = false } = {}) {
   const symbols = currentSymbols();
   if (!symbols.length) {
@@ -926,6 +958,9 @@ async function refreshQuotes({ quiet = false } = {}) {
 
   try {
     const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
+    if (data.invalids?.length) {
+      elements.marketStatus.textContent = invalidSymbolMessage(data.invalids);
+    }
     applyResolvedSymbols(data.quotes);
     data.quotes.forEach((quote) => state.quotes.set(quote.symbol, quote));
     const triggeredCount = evaluateAlerts(data.quotes);
@@ -933,9 +968,11 @@ async function refreshQuotes({ quiet = false } = {}) {
       state.selected = data.quotes[0]?.symbol || null;
     }
     if (data.source === "yahoo-chart") {
-      elements.marketStatus.textContent = triggeredCount
-        ? `${triggeredCount} price alert${triggeredCount === 1 ? "" : "s"} triggered`
-        : "Market prices from Yahoo Finance chart feed";
+      if (!data.invalids?.length) {
+        elements.marketStatus.textContent = triggeredCount
+          ? `${triggeredCount} price alert${triggeredCount === 1 ? "" : "s"} triggered`
+          : "Market prices from Yahoo Finance chart feed";
+      }
     } else if (data.source === "mixed") {
       elements.marketStatus.textContent = data.warning || "Some prices refreshed; some are fallback demo values";
     } else {
@@ -1706,12 +1743,27 @@ elements.form.addEventListener("submit", async (event) => {
     return;
   }
 
-  group.symbols = [symbol, ...group.symbols].slice(0, 20);
-  state.selected = symbol;
+  elements.marketStatus.textContent = `Checking ${symbol}...`;
+  const quote = await lookupStockBeforeAdd(symbol);
+  if (!quote) {
+    elements.input.select();
+    return;
+  }
+
+  const resolvedSymbol = cleanSymbol(quote.symbol);
+  if (group.symbols.includes(resolvedSymbol)) {
+    elements.input.value = "";
+    elements.marketStatus.textContent = `${resolvedSymbol} is already in this group`;
+    return;
+  }
+
+  group.symbols = [resolvedSymbol, ...group.symbols].slice(0, 20);
+  state.quotes.set(resolvedSymbol, quote);
+  state.selected = resolvedSymbol;
   saveGroups();
   elements.input.value = "";
   await refreshQuotes();
-  await refreshNews(symbol);
+  await refreshNews(resolvedSymbol);
 });
 
 elements.authForm.addEventListener("submit", async (event) => {

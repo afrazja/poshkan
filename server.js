@@ -155,12 +155,30 @@ async function resolveYahooSymbol(symbol) {
   )}&quotesCount=8&newsCount=0`;
   const data = await fetchJson(endpoint);
   const quotes = Array.isArray(data?.quotes) ? data.quotes : [];
+  const suggestions = quotes
+    .filter((quote) => ["EQUITY", "ETF"].includes(quote.quoteType))
+    .slice(0, 5)
+    .map((quote) => ({
+      symbol: cleanSymbol(quote.symbol),
+      name: quote.shortname || quote.longname || quote.name || quote.symbol,
+      exchange: quote.exchDisp || quote.exchange || "",
+      quoteType: quote.quoteType || ""
+    }))
+    .filter((quote) => quote.symbol);
   const match =
-    quotes.find((quote) => quote.quoteType === "EQUITY" && cleanSymbol(quote.symbol).startsWith(symbol)) ||
-    quotes.find((quote) => quote.quoteType === "EQUITY") ||
-    quotes[0];
+    suggestions.find((quote) => quote.symbol === symbol) ||
+    suggestions.find((quote) => quote.symbol.startsWith(symbol)) ||
+    suggestions[0];
 
-  return cleanSymbol(match?.symbol);
+  return { symbol: match?.symbol || "", suggestions };
+}
+
+function invalidSymbolError(symbol, cause, suggestions = []) {
+  const error = new Error(`No stock symbol found for ${symbol}`);
+  error.invalidSymbol = symbol;
+  error.suggestions = suggestions;
+  error.cause = cause;
+  return error;
 }
 
 async function quoteForSymbol(symbol) {
@@ -173,13 +191,17 @@ async function quoteForSymbol(symbol) {
     const data = await fetchJson(chartEndpoint(symbol));
     return quoteFromChart(symbol, data);
   } catch (error) {
-    const resolvedSymbol = await resolveYahooSymbol(symbol);
+    const { symbol: resolvedSymbol, suggestions } = await resolveYahooSymbol(symbol);
     if (!resolvedSymbol || resolvedSymbol === symbol) {
-      throw error;
+      throw invalidSymbolError(symbol, error, suggestions);
     }
 
-    const data = await fetchJson(chartEndpoint(resolvedSymbol));
-    return quoteFromChart(resolvedSymbol, data, symbol);
+    try {
+      const data = await fetchJson(chartEndpoint(resolvedSymbol));
+      return quoteFromChart(resolvedSymbol, data, symbol);
+    } catch (resolvedError) {
+      throw invalidSymbolError(symbol, resolvedError, suggestions);
+    }
   }
 }
 
@@ -294,15 +316,27 @@ async function quotesHandler(req, res) {
       symbols.map((symbol) => quoteForSymbol(symbol))
     );
 
-    const quotes = quoteResults.map((result, index) =>
-      result.status === "fulfilled" ? result.value : demoQuote(symbols[index], index)
-    );
-    const failed = quoteResults.filter((result) => result.status === "rejected").length;
+    const invalids = [];
+    const quotes = quoteResults.flatMap((result, index) => {
+      if (result.status === "fulfilled") return [result.value];
+      const error = result.reason;
+      if (error?.invalidSymbol) {
+        invalids.push({
+          symbol: symbols[index],
+          message: error.message,
+          suggestions: error.suggestions || []
+        });
+        return [];
+      }
+      return [demoQuote(symbols[index], index)];
+    });
+    const failed = quoteResults.filter((result) => result.status === "rejected" && !result.reason?.invalidSymbol).length;
 
     return json(res, 200, {
       source: failed ? "mixed" : "yahoo-chart",
       warning: failed ? `${failed} symbol(s) could not be refreshed and are showing demo fallback.` : null,
-      quotes
+      quotes,
+      invalids
     });
   } catch (error) {
     return json(res, 200, {
