@@ -16,6 +16,7 @@ const state = {
   selected: null,
   creatingGroup: false,
   renamingGroupId: null,
+  draggingSymbol: null,
   chartPeriod: localStorage.getItem("stock-dashboard-chart-period") || "1d",
   customAmount: Number.parseInt(localStorage.getItem("stock-dashboard-custom-amount"), 10) || 2,
   customUnit: localStorage.getItem("stock-dashboard-custom-unit") || "days",
@@ -1310,7 +1311,7 @@ function renderWatchlist() {
       return `
         <article class="stock-card ${isSelected ? "active expanded" : "compact"} ${
           status.triggered ? "alert-hit" : ""
-        }" data-symbol="${symbol}">
+        }" data-symbol="${symbol}" draggable="true">
           <button class="stock-main" data-action="select" data-symbol="${symbol}">
             <span class="stock-title">
               <strong>${escapeHtml(symbol)}</strong>
@@ -1769,6 +1770,29 @@ async function selectStock(symbol) {
   await Promise.all([refreshHistory(symbol), refreshNews(symbol)]);
 }
 
+function getDragAfterCard(container, x, y) {
+  const cards = [...container.querySelectorAll(".stock-card:not(.dragging)")];
+  return cards.find((card) => {
+    const rect = card.getBoundingClientRect();
+    const midpointY = rect.top + rect.height / 2;
+    const midpointX = rect.left + rect.width / 2;
+    const sameRow = y >= rect.top && y <= rect.bottom;
+    return y < midpointY || (sameRow && x < midpointX);
+  });
+}
+
+function saveDraggedCardOrder() {
+  const group = activeGroup();
+  const orderedSymbols = [...elements.stockList.querySelectorAll(".stock-card")]
+    .map((card) => cleanSymbol(card.dataset.symbol))
+    .filter(Boolean);
+
+  if (orderedSymbols.length !== group.symbols.length) return;
+  group.symbols = orderedSymbols;
+  saveGroups();
+  renderWatchlist();
+}
+
 elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const group = activeGroup();
@@ -2004,6 +2028,7 @@ elements.alertTray.addEventListener("click", (event) => {
 });
 
 elements.stockList.addEventListener("click", async (event) => {
+  if (state.draggingSymbol) return;
   const button = event.target.closest("button");
   if (!button) return;
 
@@ -2033,6 +2058,45 @@ elements.stockList.addEventListener("click", async (event) => {
   if (button.dataset.action === "select") {
     await selectStock(symbol);
   }
+});
+
+elements.stockList.addEventListener("dragstart", (event) => {
+  const card = event.target.closest(".stock-card");
+  if (!card || event.target.closest("input, select, label")) {
+    event.preventDefault();
+    return;
+  }
+
+  state.draggingSymbol = cleanSymbol(card.dataset.symbol);
+  card.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", state.draggingSymbol);
+});
+
+elements.stockList.addEventListener("dragover", (event) => {
+  if (!state.draggingSymbol) return;
+  event.preventDefault();
+  const draggingCard = elements.stockList.querySelector(".stock-card.dragging");
+  if (!draggingCard) return;
+
+  const afterCard = getDragAfterCard(elements.stockList, event.clientX, event.clientY);
+  if (afterCard) {
+    elements.stockList.insertBefore(draggingCard, afterCard);
+  } else {
+    elements.stockList.appendChild(draggingCard);
+  }
+});
+
+elements.stockList.addEventListener("drop", (event) => {
+  if (!state.draggingSymbol) return;
+  event.preventDefault();
+  saveDraggedCardOrder();
+});
+
+elements.stockList.addEventListener("dragend", () => {
+  const draggingCard = elements.stockList.querySelector(".stock-card.dragging");
+  draggingCard?.classList.remove("dragging");
+  state.draggingSymbol = null;
 });
 
 elements.stockList.addEventListener("change", (event) => {

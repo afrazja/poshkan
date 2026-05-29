@@ -689,6 +689,17 @@ h2 {
     border-color 140ms ease,
     background 140ms ease,
     transform 140ms ease;
+  cursor: grab;
+}
+
+.stock-card:active {
+  cursor: grabbing;
+}
+
+.stock-card.dragging {
+  opacity: 0.45;
+  border-color: var(--cyan);
+  transform: scale(0.985);
 }
 
 .position-editor {
