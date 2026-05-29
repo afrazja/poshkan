@@ -832,6 +832,15 @@ function renderAuthState() {
   }
 }
 
+function clearSignedOutState(message = "Signed out.") {
+  state.session = null;
+  state.cloudReady = false;
+  state.cloudSaving = false;
+  state.cloudSaveQueued = false;
+  setAuthMessage(message, "success");
+  renderAuthState();
+}
+
 async function initializeAuth() {
   const config = await getJson("/api/config");
 
@@ -1740,9 +1749,19 @@ elements.authForm.addEventListener("submit", async (event) => {
 
 elements.signOut.addEventListener("click", async () => {
   if (!state.supabase) return;
-  await state.supabase.auth.signOut();
-  state.session = null;
-  renderAuthState();
+  elements.signOut.disabled = true;
+  elements.signOut.textContent = "Signing out...";
+  try {
+    const { error } = await state.supabase.auth.signOut();
+    if (error) throw error;
+    clearSignedOutState();
+  } catch (error) {
+    await state.supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    clearSignedOutState(`Signed out locally. ${error.message || "Cloud sign-out did not finish."}`);
+  } finally {
+    elements.signOut.disabled = false;
+    elements.signOut.textContent = "Sign out";
+  }
 });
 
 elements.groupTabs.addEventListener("click", async (event) => {
