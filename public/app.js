@@ -1597,7 +1597,6 @@ function renderWatchlist() {
             <span class="stock-title">
               <strong>${escapeHtml(symbol)}</strong>
               <em class="market-pill">${escapeHtml(marketState)}</em>
-              <em class="holding-pill ${ownedShares > 0 ? "has-shares" : ""}">Own ${ownedShareLabel}</em>
             </span>
             <span class="stock-name">${escapeHtml(quote?.shortName || "Waiting for quote")}</span>
             <span class="card-stats">
@@ -1610,6 +1609,7 @@ function renderWatchlist() {
             <strong>${money(quote?.regularMarketPrice)}</strong>
             <small class="change-badge ${direction}">${signed(change)} (${signed(changePercent, "%")})</small>
           </button>
+          <div class="quantity-label">Quantity = ${ownedShareLabel}</div>
           <button class="remove-stock" data-action="remove" data-symbol="${symbol}" title="Remove ${escapeHtml(
             symbol
           )}">x</button>

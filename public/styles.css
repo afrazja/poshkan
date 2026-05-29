@@ -1214,8 +1214,7 @@ h2 {
   padding: 5px 8px;
 }
 
-.market-pill,
-.holding-pill {
+.market-pill {
   display: inline-flex;
   align-items: center;
   min-height: 20px;
@@ -1226,12 +1225,6 @@ h2 {
   font-style: normal;
   font-weight: 800;
   padding: 0 7px;
-}
-
-.holding-pill.has-shares {
-  border-color: rgba(68, 208, 123, 0.38);
-  background: rgba(68, 208, 123, 0.1);
-  color: var(--green);
 }
 
 .stock-name {
@@ -1276,6 +1269,22 @@ h2 {
 
 .quote-meta strong {
   font-size: 1.08rem;
+}
+
+.quantity-label {
+  display: none;
+}
+
+.stock-card.compact .quantity-label {
+  position: absolute;
+  right: 44px;
+  bottom: 12px;
+  display: block;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  pointer-events: none;
 }
 
 .change-badge {
