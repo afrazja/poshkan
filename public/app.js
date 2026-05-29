@@ -627,6 +627,12 @@ async function ensureUuidGroupIds() {
 async function loadCloudData() {
   if (!state.supabase || !state.session) return;
   const userId = state.session.user.id;
+  const localGroups = state.groups.map((group) => ({
+    ...group,
+    symbols: [...(group.symbols || [])],
+    portfolio: { ...(group.portfolio || {}) },
+    alerts: { ...(group.alerts || {}) }
+  }));
   state.cloudReady = false;
 
   await state.supabase.from("profiles").upsert({
@@ -655,6 +661,19 @@ async function loadCloudData() {
       .eq("user_id", userId)
       .order("sort_order", { ascending: true });
     if (watchlistsError) throw watchlistsError;
+
+    if (!watchlists?.length && localGroups.some((group) => group.symbols?.length)) {
+      state.groups = localGroups;
+      state.activeGroupId = state.groups[0]?.id || "main";
+      state.selected = currentSymbols()[0] || null;
+      await ensureUuidGroupIds();
+      state.cloudReady = true;
+      await saveCloudData({ force: true });
+      saveGroups();
+      renderWatchlist();
+      renderSelectedQuote();
+      return;
+    }
 
     const ids = (watchlists || []).map((group) => group.id);
     const [{ data: stocks, error: stocksError }, { data: positions, error: positionsError }, { data: alerts, error: alertsError }] =
