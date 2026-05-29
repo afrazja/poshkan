@@ -1196,6 +1196,7 @@ h2 {
 .stock-card .stock-title {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -1213,7 +1214,8 @@ h2 {
   padding: 5px 8px;
 }
 
-.market-pill {
+.market-pill,
+.holding-pill {
   display: inline-flex;
   align-items: center;
   min-height: 20px;
@@ -1224,6 +1226,12 @@ h2 {
   font-style: normal;
   font-weight: 800;
   padding: 0 7px;
+}
+
+.holding-pill.has-shares {
+  border-color: rgba(68, 208, 123, 0.38);
+  background: rgba(68, 208, 123, 0.1);
+  color: var(--green);
 }
 
 .stock-name {

@@ -1582,6 +1582,8 @@ function renderWatchlist() {
       const direction = change >= 0 ? "up" : "down";
       const marketState = quote?.marketState || "WAIT";
       const stats = positionStats(symbol);
+      const ownedShares = Number(stats.shares) || 0;
+      const ownedShareLabel = ownedShares.toLocaleString(undefined, { maximumFractionDigits: 4 });
       const pnlDirection = stats.pnl >= 0 ? "up" : "down";
       const alert = alertFor(symbol);
       const status = alertStatus(symbol);
@@ -1595,6 +1597,7 @@ function renderWatchlist() {
             <span class="stock-title">
               <strong>${escapeHtml(symbol)}</strong>
               <em class="market-pill">${escapeHtml(marketState)}</em>
+              <em class="holding-pill ${ownedShares > 0 ? "has-shares" : ""}">Own ${ownedShareLabel}</em>
             </span>
             <span class="stock-name">${escapeHtml(quote?.shortName || "Waiting for quote")}</span>
             <span class="card-stats">
