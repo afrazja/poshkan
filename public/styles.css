@@ -338,6 +338,22 @@ h2 {
   font-size: 1.25rem;
 }
 
+.add-stock-message {
+  min-height: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.add-stock-message.error {
+  color: var(--red);
+}
+
+.add-stock-message.success {
+  color: var(--green);
+}
+
 .status-row {
   min-height: 52px;
   margin-bottom: 18px;

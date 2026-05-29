@@ -47,6 +47,7 @@ const elements = {
   signOut: document.querySelector("#sign-out"),
   form: document.querySelector("#add-stock-form"),
   input: document.querySelector("#stock-symbol"),
+  addStockMessage: document.querySelector("#add-stock-message"),
   groupTabs: document.querySelector("#group-tabs"),
   watchlist: document.querySelector(".watchlist"),
   workspace: document.querySelector(".workspace"),
@@ -606,6 +607,11 @@ function setAuthMessage(message, type = "") {
   elements.authMessage.className = type;
 }
 
+function setAddStockMessage(message, type = "") {
+  elements.addStockMessage.textContent = message || "";
+  elements.addStockMessage.className = `add-stock-message ${type}`.trim();
+}
+
 async function ensureUuidGroupIds() {
   if (!state.supabase || !state.session) return;
   const userId = state.session.user.id;
@@ -955,13 +961,13 @@ function removeInvalidSymbols(invalids = []) {
 async function lookupStockBeforeAdd(symbol) {
   const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbol)}`);
   if (data.invalids?.length || !data.quotes?.length) {
-    elements.marketStatus.textContent = invalidSymbolMessage(data.invalids) || `${symbol} is not an available stock symbol.`;
+    setAddStockMessage(invalidSymbolMessage(data.invalids) || `${symbol} is not an available stock symbol.`, "error");
     return null;
   }
 
   const quote = data.quotes[0];
   if (!quote?.symbol || !Number.isFinite(quote.regularMarketPrice)) {
-    elements.marketStatus.textContent = `${symbol} is not an available stock symbol.`;
+    setAddStockMessage(`${symbol} is not an available stock symbol.`, "error");
     return null;
   }
 
@@ -983,7 +989,7 @@ async function refreshQuotes({ quiet = false } = {}) {
     const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
     const removedInvalids = removeInvalidSymbols(data.invalids || []);
     if (data.invalids?.length) {
-      elements.marketStatus.textContent = invalidSymbolMessage(data.invalids);
+      setAddStockMessage(invalidSymbolMessage(data.invalids), "error");
     }
     applyResolvedSymbols(data.quotes);
     data.quotes.forEach((quote) => state.quotes.set(quote.symbol, quote));
@@ -1798,11 +1804,14 @@ elements.form.addEventListener("submit", async (event) => {
   const group = activeGroup();
   const symbol = cleanSymbol(elements.input.value);
   if (!symbol || group.symbols.includes(symbol)) {
+    if (symbol && group.symbols.includes(symbol)) {
+      setAddStockMessage(`${symbol} is already in this group.`, "error");
+    }
     elements.input.value = "";
     return;
   }
 
-  elements.marketStatus.textContent = `Checking ${symbol}...`;
+  setAddStockMessage(`Checking ${symbol}...`);
   const quote = await lookupStockBeforeAdd(symbol);
   if (!quote) {
     elements.input.select();
@@ -1812,7 +1821,7 @@ elements.form.addEventListener("submit", async (event) => {
   const resolvedSymbol = cleanSymbol(quote.symbol);
   if (group.symbols.includes(resolvedSymbol)) {
     elements.input.value = "";
-    elements.marketStatus.textContent = `${resolvedSymbol} is already in this group`;
+    setAddStockMessage(`${resolvedSymbol} is already in this group.`, "error");
     return;
   }
 
@@ -1821,6 +1830,7 @@ elements.form.addEventListener("submit", async (event) => {
   state.selected = resolvedSymbol;
   saveGroups();
   elements.input.value = "";
+  setAddStockMessage(`${resolvedSymbol} added to ${group.name}.`, "success");
   await refreshQuotes();
   await refreshNews(resolvedSymbol);
 });
