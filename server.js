@@ -165,12 +165,7 @@ async function resolveYahooSymbol(symbol) {
       quoteType: quote.quoteType || ""
     }))
     .filter((quote) => quote.symbol);
-  const match =
-    suggestions.find((quote) => quote.symbol === symbol) ||
-    suggestions.find((quote) => quote.symbol.startsWith(symbol)) ||
-    suggestions[0];
-
-  return { symbol: match?.symbol || "", suggestions };
+  return { suggestions };
 }
 
 function invalidSymbolError(symbol, cause, suggestions = []) {
@@ -191,17 +186,8 @@ async function quoteForSymbol(symbol) {
     const data = await fetchJson(chartEndpoint(symbol));
     return quoteFromChart(symbol, data);
   } catch (error) {
-    const { symbol: resolvedSymbol, suggestions } = await resolveYahooSymbol(symbol);
-    if (!resolvedSymbol || resolvedSymbol === symbol) {
-      throw invalidSymbolError(symbol, error, suggestions);
-    }
-
-    try {
-      const data = await fetchJson(chartEndpoint(resolvedSymbol));
-      return quoteFromChart(resolvedSymbol, data, symbol);
-    } catch (resolvedError) {
-      throw invalidSymbolError(symbol, resolvedError, suggestions);
-    }
+    const { suggestions } = await resolveYahooSymbol(symbol);
+    throw invalidSymbolError(symbol, error, suggestions);
   }
 }
 
