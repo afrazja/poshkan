@@ -1203,8 +1203,8 @@ async function refreshQuotes({ quiet = false } = {}) {
 
   try {
     const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
-    const removedInvalids = removeInvalidSymbols(data.invalids || []);
-    if (data.invalids?.length) {
+    const removedInvalids = quiet ? false : removeInvalidSymbols(data.invalids || []);
+    if (!quiet && data.invalids?.length) {
       setAddStockMessage(invalidSymbolMessage(data.invalids), "error");
     }
     applyResolvedSymbols(data.quotes);

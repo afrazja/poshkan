@@ -344,6 +344,12 @@ async function quoteForSymbol(symbol) {
     return quoteFromChart(symbol, data);
   } catch (error) {
     const { suggestions } = await resolveYahooSymbol(symbol);
+    const exactMatch = suggestions.some((quote) => quote.symbol === symbol);
+    if (exactMatch) {
+      const fallbackError = new Error(`Live quote unavailable for ${symbol}`);
+      fallbackError.cause = error;
+      throw fallbackError;
+    }
     throw invalidSymbolError(symbol, error, suggestions);
   }
 }
