@@ -17,6 +17,7 @@ const state = {
   creatingGroup: false,
   renamingGroupId: null,
   draggingSymbol: null,
+  authMode: "signin",
   chartPeriod: localStorage.getItem("stock-dashboard-chart-period") || "1d",
   customAmount: Number.parseInt(localStorage.getItem("stock-dashboard-custom-amount"), 10) || 2,
   customUnit: localStorage.getItem("stock-dashboard-custom-unit") || "days",
@@ -42,6 +43,12 @@ const elements = {
   authForm: document.querySelector("#auth-form"),
   authEmail: document.querySelector("#auth-email"),
   authPassword: document.querySelector("#auth-password"),
+  authUsername: document.querySelector("#auth-username"),
+  authStartingCash: document.querySelector("#auth-starting-cash"),
+  authExperience: document.querySelector("#auth-experience"),
+  signupFields: document.querySelector("#signup-fields"),
+  authModeButtons: document.querySelectorAll("[data-auth-mode]"),
+  authSubmit: document.querySelector("#auth-submit"),
   authMessage: document.querySelector("#auth-message"),
   dashboardShell: document.querySelector("#dashboard-shell"),
   signOut: document.querySelector("#sign-out"),
@@ -605,6 +612,18 @@ async function getJson(url) {
 function setAuthMessage(message, type = "") {
   elements.authMessage.textContent = message || "";
   elements.authMessage.className = type;
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode === "signup" ? "signup" : "signin";
+  elements.authForm.dataset.mode = state.authMode;
+  elements.signupFields.hidden = state.authMode !== "signup";
+  elements.authSubmit.textContent = state.authMode === "signup" ? "Create account" : "Sign in";
+  elements.authPassword.autocomplete = state.authMode === "signup" ? "new-password" : "current-password";
+  elements.authModeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.authMode === state.authMode);
+  });
+  setAuthMessage("");
 }
 
 function setAddStockMessage(message, type = "") {
@@ -1859,19 +1878,37 @@ elements.form.addEventListener("submit", async (event) => {
 
 elements.authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const action = event.submitter?.dataset.authAction || "signin";
+  const action = state.authMode;
   const email = elements.authEmail.value.trim();
   const password = elements.authPassword.value;
+  const username = elements.authUsername.value.trim().slice(0, 32);
+  const startingCash = Math.min(Math.max(Number(elements.authStartingCash.value) || STARTING_CASH, 1000), 10000000);
+  const experience = elements.authExperience.value;
 
   if (!state.supabase) {
     setAuthMessage("Supabase is not configured yet.", "error");
     return;
   }
 
+  if (action === "signup" && (!username || !experience)) {
+    setAuthMessage("Enter a user name and choose your trading experience.", "error");
+    return;
+  }
+
   setAuthMessage(action === "signup" ? "Creating account..." : "Signing in...");
   const request =
     action === "signup"
-      ? state.supabase.auth.signUp({ email, password })
+      ? state.supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              username,
+              starting_cash: startingCash,
+              trading_experience: experience
+            }
+          }
+        })
       : state.supabase.auth.signInWithPassword({ email, password });
   const { data, error } = await request;
 
@@ -1881,6 +1918,11 @@ elements.authForm.addEventListener("submit", async (event) => {
   }
 
   state.session = data.session || null;
+  if (action === "signup" && state.session) {
+    state.cash = startingCash;
+    state.realizedPnl = 0;
+    saveGroups();
+  }
   if (!data.session && action === "signup") {
     setAuthMessage("Account created. Check your email if confirmation is enabled.", "success");
     return;
@@ -1888,6 +1930,10 @@ elements.authForm.addEventListener("submit", async (event) => {
 
   setAuthMessage("");
   renderAuthState();
+});
+
+elements.authModeButtons.forEach((button) => {
+  button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
 });
 
 elements.signOut.addEventListener("click", async () => {
@@ -2264,6 +2310,7 @@ window.addEventListener("resize", () => {
 renderPeriodButtons();
 renderChartControls();
 renderSectionVisibility();
+setAuthMode("signin");
 
 initializeAuth();
 

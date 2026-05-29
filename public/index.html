@@ -64,6 +64,10 @@
             <p class="brand-kicker">Account access</p>
             <h2>Sign in or create an account</h2>
           </div>
+          <div class="auth-mode-switch" aria-label="Authentication mode">
+            <button type="button" data-auth-mode="signin" class="active">Sign in</button>
+            <button type="button" data-auth-mode="signup">Create account</button>
+          </div>
           <label>
             <span>Email</span>
             <input id="auth-email" type="email" autocomplete="email" required />
@@ -72,9 +76,28 @@
             <span>Password</span>
             <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required />
           </label>
+          <div id="signup-fields" class="signup-fields" hidden>
+            <label>
+              <span>User name</span>
+              <input id="auth-username" type="text" autocomplete="nickname" maxlength="32" placeholder="Your name" />
+            </label>
+            <label>
+              <span>Starting paper money</span>
+              <input id="auth-starting-cash" type="number" min="1000" max="10000000" step="1000" value="100000" />
+            </label>
+            <label>
+              <span>Trading experience</span>
+              <select id="auth-experience">
+                <option value="">Choose one</option>
+                <option value="new">New to trading</option>
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </select>
+            </label>
+          </div>
           <div class="auth-actions">
-            <button type="submit" data-auth-action="signin">Sign in</button>
-            <button type="submit" data-auth-action="signup">Create account</button>
+            <button id="auth-submit" type="submit">Sign in</button>
           </div>
           <p id="auth-message"></p>
         </form>
