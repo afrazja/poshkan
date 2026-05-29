@@ -588,7 +588,14 @@ h2 {
   font-size: 0.72rem;
 }
 
-.add-group-tab,
+.add-group-tab {
+  display: inline-grid;
+  grid-template-columns: 118px 34px;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
 .rename-group-tab {
   display: inline-grid;
   grid-template-columns: 118px;
