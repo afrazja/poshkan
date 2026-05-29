@@ -609,6 +609,23 @@ async function getJson(url) {
   return response.json();
 }
 
+async function postJson(url, payload, { auth = false } = {}) {
+  const headers = { "content-type": "application/json" };
+  if (auth && state.session?.access_token) {
+    headers.authorization = `Bearer ${state.session.access_token}`;
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || `Request failed: ${response.status}`);
+  }
+  return body;
+}
+
 function setAuthMessage(message, type = "") {
   elements.authMessage.textContent = message || "";
   elements.authMessage.className = type;
@@ -1121,7 +1138,50 @@ function clearSelectedCard() {
   renderSelectedQuote();
 }
 
-function executeTrade(symbol, action, quantity) {
+async function executeBrokerTrade(symbol, action, quantity) {
+  const qty = Math.max(0, Number(quantity) || 0);
+  if (!qty) {
+    elements.marketStatus.textContent = "Enter a share amount after the quote loads";
+    return false;
+  }
+
+  const data = await postJson(
+    "/api/paper/trade",
+    {
+      symbol,
+      side: action,
+      shares: qty
+    },
+    { auth: true }
+  );
+
+  state.cash = data.account.cash;
+  state.realizedPnl = data.account.realizedPnl;
+  state.quotes.set(data.quote.symbol, data.quote);
+
+  const group = activeGroup();
+  if (!group.symbols.includes(data.quote.symbol)) {
+    group.symbols = [data.quote.symbol, ...group.symbols].slice(0, 20);
+  }
+  group.portfolio ||= {};
+  group.portfolio[data.quote.symbol] = {
+    shares: data.position.shares,
+    avgCost: data.position.avgCost
+  };
+  if (state.selected === symbol) {
+    state.selected = data.quote.symbol;
+  }
+  saveGroups();
+  renderWatchlist();
+  renderSelectedQuote();
+  elements.marketStatus.textContent =
+    action === "buy"
+      ? `Bought ${qty} ${data.quote.symbol} at ${moneyAxis(data.trade.price)}`
+      : `Sold ${qty} ${data.quote.symbol} at ${moneyAxis(data.trade.price)} (${signedMoney(data.trade.realizedPnl)} realized)`;
+  return true;
+}
+
+function executeLocalTrade(symbol, action, quantity) {
   const quote = state.quotes.get(symbol);
   const price = quote?.regularMarketPrice;
   const qty = Math.max(0, Number(quantity) || 0);
@@ -1184,6 +1244,20 @@ function executeTrade(symbol, action, quantity) {
   }
   renderWatchlist();
   renderSelectedQuote();
+}
+
+async function executeTrade(symbol, action, quantity) {
+  if (state.session?.access_token) {
+    try {
+      await executeBrokerTrade(symbol, action, quantity);
+      return;
+    } catch (error) {
+      elements.marketStatus.textContent = `Paper broker failed: ${error.message}`;
+      return;
+    }
+  }
+
+  executeLocalTrade(symbol, action, quantity);
 }
 
 function saveRenamedGroup(form) {

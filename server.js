@@ -55,6 +55,17 @@ const cleanSymbol = (value) =>
 
 const getQuery = (req) => new URL(req.url, `http://${req.headers.host}`).searchParams;
 
+async function readJsonBody(req) {
+  let body = "";
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > 1_000_000) {
+      throw new Error("Request body is too large");
+    }
+  }
+  return body ? JSON.parse(body) : {};
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {
@@ -68,6 +79,51 @@ async function fetchJson(url) {
   }
 
   return response.json();
+}
+
+function supabaseConfig() {
+  const url = process.env.SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error("Supabase is not configured on the server");
+  }
+  return { url, anonKey };
+}
+
+function bearerToken(req) {
+  const header = req.headers.authorization || "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    throw new Error("Missing user session");
+  }
+  return match[1];
+}
+
+async function supabaseRequest(path, token, options = {}) {
+  const { url, anonKey } = supabaseConfig();
+  const response = await fetch(`${url}${path}`, {
+    ...options,
+    headers: {
+      apikey: anonKey,
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error_description || `Supabase returned ${response.status}`);
+  }
+  return data;
+}
+
+async function currentUser(token) {
+  const user = await supabaseRequest("/auth/v1/user", token, { method: "GET" });
+  if (!user?.id) {
+    throw new Error("Could not verify user session");
+  }
+  return user;
 }
 
 async function fetchText(url) {
@@ -447,6 +503,222 @@ async function newsHandler(req, res) {
   }
 }
 
+async function getAccount(token, user) {
+  const accountRows = await supabaseRequest(
+    `/rest/v1/accounts?select=cash,realized_pnl&user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
+    token,
+    { method: "GET" }
+  );
+  const existing = accountRows?.[0];
+  if (existing) {
+    return {
+      cash: Number(existing.cash) || 0,
+      realizedPnl: Number(existing.realized_pnl) || 0
+    };
+  }
+
+  const startingCash = Math.min(Math.max(Number(user.user_metadata?.starting_cash) || 100000, 1000), 10000000);
+  await supabaseRequest("/rest/v1/accounts", token, {
+    method: "POST",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify({ user_id: user.id, cash: startingCash, realized_pnl: 0 })
+  });
+  return { cash: startingCash, realizedPnl: 0 };
+}
+
+async function getPosition(token, userId, symbol) {
+  const rows = await supabaseRequest(
+    `/rest/v1/positions?select=symbol,shares,avg_cost&user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(
+      symbol
+    )}&limit=1`,
+    token,
+    { method: "GET" }
+  );
+  const position = rows?.[0];
+  return {
+    shares: Number(position?.shares) || 0,
+    avgCost: Number(position?.avg_cost) || 0,
+    exists: Boolean(position)
+  };
+}
+
+async function saveAccount(token, userId, account) {
+  await supabaseRequest(`/rest/v1/accounts?user_id=eq.${encodeURIComponent(userId)}`, token, {
+    method: "PATCH",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify({
+      cash: account.cash,
+      realized_pnl: account.realizedPnl
+    })
+  });
+}
+
+async function savePosition(token, userId, symbol, position) {
+  if (position.shares <= 0) {
+    await supabaseRequest(
+      `/rest/v1/positions?user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(symbol)}`,
+      token,
+      { method: "DELETE", headers: { prefer: "return=minimal" } }
+    );
+    return;
+  }
+
+  if (position.exists) {
+    await supabaseRequest(
+      `/rest/v1/positions?user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(symbol)}`,
+      token,
+      {
+        method: "PATCH",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify({ shares: position.shares, avg_cost: position.avgCost })
+      }
+    );
+    return;
+  }
+
+  await supabaseRequest("/rest/v1/positions", token, {
+    method: "POST",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify({
+      user_id: userId,
+      symbol,
+      shares: position.shares,
+      avg_cost: position.avgCost
+    })
+  });
+}
+
+async function paperTradeHandler(req, res) {
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "Use POST for paper trades." });
+  }
+
+  try {
+    const token = bearerToken(req);
+    const user = await currentUser(token);
+    const body = await readJsonBody(req);
+    const symbol = cleanSymbol(body.symbol);
+    const side = String(body.side || "").toLowerCase();
+    const shares = Math.max(0, Number(body.shares) || 0);
+
+    if (!symbol || !["buy", "sell"].includes(side) || !shares) {
+      return json(res, 400, { error: "Provide symbol, side, and shares." });
+    }
+
+    const quote = await quoteForSymbol(symbol);
+    const price = quote.regularMarketPrice;
+    if (!Number.isFinite(price)) {
+      return json(res, 422, { error: `No usable market price for ${symbol}.` });
+    }
+
+    const account = await getAccount(token, user);
+    const position = await getPosition(token, user.id, quote.symbol);
+    let realizedPnl = 0;
+
+    if (side === "buy") {
+      const cost = shares * price;
+      if (cost > account.cash) {
+        return json(res, 400, { error: `Not enough paper cash to buy ${shares} ${quote.symbol}.` });
+      }
+      const existingCost = position.shares * position.avgCost;
+      position.shares += shares;
+      position.avgCost = (existingCost + cost) / position.shares;
+      account.cash -= cost;
+    } else {
+      if (shares > position.shares) {
+        return json(res, 400, { error: `You only have ${position.shares.toLocaleString()} ${quote.symbol} shares.` });
+      }
+      realizedPnl = shares * (price - position.avgCost);
+      position.shares -= shares;
+      account.cash += shares * price;
+      account.realizedPnl += realizedPnl;
+      if (position.shares <= 0) {
+        position.shares = 0;
+        position.avgCost = 0;
+      }
+    }
+
+    account.cash = Math.max(0, Number(account.cash.toFixed(2)));
+    account.realizedPnl = Number(account.realizedPnl.toFixed(2));
+    position.shares = Math.max(0, Number(position.shares.toFixed(6)));
+    position.avgCost = Math.max(0, Number(position.avgCost.toFixed(4)));
+
+    await saveAccount(token, user.id, account);
+    await savePosition(token, user.id, quote.symbol, position);
+    await supabaseRequest("/rest/v1/trades", token, {
+      method: "POST",
+      headers: { prefer: "return=minimal" },
+      body: JSON.stringify({
+        user_id: user.id,
+        symbol: quote.symbol,
+        side,
+        shares,
+        price,
+        realized_pnl: realizedPnl
+      })
+    });
+
+    return json(res, 200, {
+      source: "paper-broker",
+      trade: {
+        symbol: quote.symbol,
+        side,
+        shares,
+        price,
+        realizedPnl: Number(realizedPnl.toFixed(2))
+      },
+      account,
+      position: {
+        symbol: quote.symbol,
+        shares: position.shares,
+        avgCost: position.avgCost
+      },
+      quote
+    });
+  } catch (error) {
+    const status = error.message === "Missing user session" ? 401 : 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
+async function paperAccountHandler(req, res) {
+  if (req.method !== "GET") {
+    return json(res, 405, { error: "Use GET for paper account." });
+  }
+
+  try {
+    const token = bearerToken(req);
+    const user = await currentUser(token);
+    const account = await getAccount(token, user);
+    const positions = await supabaseRequest(
+      `/rest/v1/positions?select=symbol,shares,avg_cost&user_id=eq.${encodeURIComponent(user.id)}&order=symbol.asc`,
+      token,
+      { method: "GET" }
+    );
+    const trades = await supabaseRequest(
+      `/rest/v1/trades?select=symbol,side,shares,price,realized_pnl,created_at&user_id=eq.${encodeURIComponent(
+        user.id
+      )}&order=created_at.desc&limit=25`,
+      token,
+      { method: "GET" }
+    );
+
+    return json(res, 200, {
+      source: "paper-broker",
+      account,
+      positions: (positions || []).map((position) => ({
+        symbol: cleanSymbol(position.symbol),
+        shares: Number(position.shares) || 0,
+        avgCost: Number(position.avg_cost) || 0
+      })),
+      trades: trades || []
+    });
+  } catch (error) {
+    const status = error.message === "Missing user session" ? 401 : 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
 function configHandler(req, res) {
   return json(res, 200, {
     supabaseUrl: process.env.SUPABASE_URL || "",
@@ -479,6 +751,8 @@ const server = http.createServer(async (req, res) => {
     if (path === "/api/quotes") return quotesHandler(req, res);
     if (path === "/api/history") return historyHandler(req, res);
     if (path === "/api/news") return newsHandler(req, res);
+    if (path === "/api/paper/account") return paperAccountHandler(req, res);
+    if (path === "/api/paper/trade") return paperTradeHandler(req, res);
     if (path === "/api/config") return configHandler(req, res);
 
     return staticHandler(req, res);
