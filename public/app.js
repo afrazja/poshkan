@@ -1824,6 +1824,19 @@ elements.groupTabs.addEventListener("submit", async (event) => {
 });
 
 elements.groupTabs.addEventListener("focusout", (event) => {
+  const addForm = event.target.closest(".add-group-tab");
+  if (addForm) {
+    window.setTimeout(() => {
+      const stillInsideForm = addForm.contains(document.activeElement);
+      const name = addForm.querySelector("#group-name")?.value.trim();
+      if (!stillInsideForm && state.creatingGroup && !name) {
+        state.creatingGroup = false;
+        renderGroups();
+      }
+    }, 0);
+    return;
+  }
+
   const form = event.target.closest(".rename-group-tab");
   if (!form || !state.renamingGroupId) return;
   window.setTimeout(() => {
