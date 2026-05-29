@@ -1151,6 +1151,13 @@ function saveRenamedGroup(form) {
   renderWatchlist();
 }
 
+function showGroupInput() {
+  state.creatingGroup = true;
+  state.renamingGroupId = null;
+  renderGroups();
+  elements.groupTabs.querySelector("#group-name")?.focus();
+}
+
 function renderGroups() {
   const groupButtons = state.groups
     .map((group) => {
@@ -1849,10 +1856,7 @@ elements.groupTabs.addEventListener("click", async (event) => {
   if (!button) return;
 
   if (button.dataset.action === "show-group-input") {
-    state.creatingGroup = true;
-    state.renamingGroupId = null;
-    renderGroups();
-    elements.groupTabs.querySelector("#group-name")?.focus();
+    showGroupInput();
     return;
   }
 
@@ -1896,6 +1900,13 @@ elements.groupTabs.addEventListener("click", async (event) => {
   } else {
     renderSelectedQuote();
   }
+});
+
+elements.groupTabs.addEventListener("pointerdown", (event) => {
+  const button = event.target.closest('button[data-action="show-group-input"]');
+  if (!button) return;
+  event.preventDefault();
+  showGroupInput();
 });
 
 elements.groupTabs.addEventListener("dblclick", (event) => {
