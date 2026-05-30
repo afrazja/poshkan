@@ -32,6 +32,7 @@ const state = {
   comparisonAmount: Number.parseInt(localStorage.getItem("stock-dashboard-comparison-amount"), 10) || 4,
   comparisonUnit: localStorage.getItem("stock-dashboard-comparison-unit") || "days",
   comparisonSort: localStorage.getItem("stock-dashboard-comparison-sort") || "performance",
+  comparisonSortDirection: localStorage.getItem("stock-dashboard-comparison-sort-direction") === "asc" ? "asc" : "desc",
   comparisonLoading: false,
   comparisonPageOpen: false,
   performance: new Map(),
@@ -154,7 +155,7 @@ if (!VALID_CUSTOM_UNITS.has(state.comparisonUnit)) {
   state.comparisonUnit = "days";
 }
 
-if (!["performance", "value", "pnl", "price", "symbol"].includes(state.comparisonSort)) {
+if (!["performance", "value", "pnl", "price", "symbol", "dayChange", "shares"].includes(state.comparisonSort)) {
   state.comparisonSort = "performance";
 }
 
@@ -1889,23 +1890,28 @@ function renderComparisonTable() {
 
   const sortKey = state.comparisonSort;
   rows.sort((a, b) => {
-    if (sortKey === "symbol") return a.symbol.localeCompare(b.symbol);
+    const direction = state.comparisonSortDirection === "asc" ? 1 : -1;
+    if (sortKey === "symbol") return a.symbol.localeCompare(b.symbol) * direction;
     const aValue = Number(a[sortKey]);
     const bValue = Number(b[sortKey]);
-    return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
+    const sorted =
+      (Number.isFinite(aValue) ? aValue : -Infinity) - (Number.isFinite(bValue) ? bValue : -Infinity);
+    return sorted * direction;
   });
+  const sortMark = (key) =>
+    state.comparisonSort === key ? `<span aria-hidden="true">${state.comparisonSortDirection === "asc" ? "▲" : "▼"}</span>` : "";
 
   elements.comparisonTable.innerHTML = `
     <table>
       <thead>
         <tr>
-          <th>Symbol</th>
-          <th>Price</th>
-          <th>Day</th>
-          <th>${escapeHtml(comparisonLabel())}</th>
-          <th>Shares</th>
-          <th>Value</th>
-          <th>P/L</th>
+          <th><button type="button" data-sort-key="symbol">Symbol ${sortMark("symbol")}</button></th>
+          <th><button type="button" data-sort-key="price">Price ${sortMark("price")}</button></th>
+          <th><button type="button" data-sort-key="dayChange">Day ${sortMark("dayChange")}</button></th>
+          <th><button type="button" data-sort-key="performance">${escapeHtml(comparisonLabel())} ${sortMark("performance")}</button></th>
+          <th><button type="button" data-sort-key="shares">Shares ${sortMark("shares")}</button></th>
+          <th><button type="button" data-sort-key="value">Value ${sortMark("value")}</button></th>
+          <th><button type="button" data-sort-key="pnl">P/L ${sortMark("pnl")}</button></th>
         </tr>
       </thead>
       <tbody>
@@ -2888,9 +2894,11 @@ function applyComparisonControls() {
   state.comparisonAmount = amount;
   state.comparisonUnit = unit;
   state.comparisonSort = elements.comparisonSort.value;
+  state.comparisonSortDirection = "desc";
   localStorage.setItem("stock-dashboard-comparison-amount", String(amount));
   localStorage.setItem("stock-dashboard-comparison-unit", unit);
   localStorage.setItem("stock-dashboard-comparison-sort", state.comparisonSort);
+  localStorage.setItem("stock-dashboard-comparison-sort-direction", state.comparisonSortDirection);
 
   if (periodChanged) state.performance.clear();
   renderComparisonTable();
@@ -3037,6 +3045,21 @@ elements.stockList.addEventListener("click", async (event) => {
 });
 
 elements.comparisonTable.addEventListener("click", async (event) => {
+  const sortButton = event.target.closest("button[data-sort-key]");
+  if (sortButton) {
+    const key = sortButton.dataset.sortKey;
+    if (state.comparisonSort === key) {
+      state.comparisonSortDirection = state.comparisonSortDirection === "desc" ? "asc" : "desc";
+    } else {
+      state.comparisonSort = key;
+      state.comparisonSortDirection = "desc";
+    }
+    localStorage.setItem("stock-dashboard-comparison-sort", state.comparisonSort);
+    localStorage.setItem("stock-dashboard-comparison-sort-direction", state.comparisonSortDirection);
+    renderComparisonTable();
+    return;
+  }
+
   const button = event.target.closest("button[data-action='select']");
   if (!button) return;
   await selectStock(cleanSymbol(button.dataset.symbol));

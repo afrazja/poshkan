@@ -1140,6 +1140,22 @@ h2 {
   font-weight: 850;
 }
 
+.comparison-table th button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-align: inherit;
+}
+
+.comparison-table th button span {
+  color: var(--cyan);
+  font-size: 0.72rem;
+}
+
 .comparison-table td button {
   border: 0;
   background: transparent;
