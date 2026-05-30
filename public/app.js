@@ -215,6 +215,30 @@ function isRealWatchlistTab() {
   return isRealMode() && state.activeRealTab === "watchlist";
 }
 
+function mergeLocalRealPortfolio(localPositions = {}, localWatchlist = []) {
+  let changed = false;
+  const cloudPositions = state.realPositions || {};
+
+  Object.entries(normalizePortfolio(localPositions)).forEach(([symbol, position]) => {
+    if (!cloudPositions[symbol] && Number(position.shares) > 0) {
+      cloudPositions[symbol] = position;
+      changed = true;
+    }
+  });
+
+  const ownedSymbols = new Set(Object.keys(cloudPositions));
+  const previousWatchlist = (state.realWatchlist || []).join("|");
+  const watchlist = [...new Set([...(state.realWatchlist || []), ...(localWatchlist || [])].map(cleanSymbol).filter(Boolean))]
+    .filter((symbol) => !ownedSymbols.has(symbol));
+  if (watchlist.join("|") !== previousWatchlist) {
+    changed = true;
+  }
+
+  state.realPositions = cloudPositions;
+  state.realWatchlist = watchlist;
+  return changed;
+}
+
 function normalizeAlerts(value) {
   if (!value || typeof value !== "object") return {};
 
@@ -814,6 +838,7 @@ async function loadCloudData() {
   if (!state.supabase || !state.session) return;
   const userId = state.session.user.id;
   const localRealPositions = { ...state.realPositions };
+  const localRealWatchlist = [...(state.realWatchlist || [])];
   const localGroups = state.groups.map((group) => ({
     ...group,
     symbols: [...(group.symbols || [])],
@@ -835,10 +860,10 @@ async function loadCloudData() {
 
   if (accountError) throw accountError;
   await loadCloudRealPositions(userId);
-  if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
+  let mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist);
 
   if (!account) {
-    state.realPositions = localRealPositions;
+    mergeLocalRealPortfolio(localRealPositions, localRealWatchlist);
     await ensureUuidGroupIds();
     await saveCloudData({ force: true });
   } else {
@@ -854,7 +879,7 @@ async function loadCloudData() {
 
     if (!watchlists?.length && localGroups.some((group) => group.symbols?.length)) {
       await loadCloudRealPositions(userId);
-      if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
+      mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist) || mergedRealPortfolio;
       state.groups = localGroups;
       state.activeGroupId = state.groups[0]?.id || "main";
       state.selected = currentSymbols()[0] || null;
@@ -883,7 +908,7 @@ async function loadCloudData() {
 
     if (watchlists?.length && !(stocks || []).length && localGroups.some((group) => group.symbols?.length)) {
       await loadCloudRealPositions(userId);
-      if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
+      mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist) || mergedRealPortfolio;
       state.groups = localGroups;
       state.activeGroupId = state.groups[0]?.id || "main";
       state.selected = currentSymbols()[0] || null;
@@ -928,13 +953,16 @@ async function loadCloudData() {
         : [{ id: "main", name: "Main", symbols: DEFAULT_SYMBOLS, portfolio: {}, alerts: {} }];
     ensurePositionSymbolsVisible();
     await loadCloudRealPositions(userId);
-    if (!Object.keys(state.realPositions).length) state.realPositions = localRealPositions;
+    mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist) || mergedRealPortfolio;
 
     state.activeGroupId = state.groups[0]?.id || "main";
     state.selected = currentSymbols()[0] || null;
   }
 
   state.cloudReady = true;
+  if (mergedRealPortfolio) {
+    await saveCloudData({ force: true });
+  }
   saveGroups();
   renderWatchlist();
   renderSelectedQuote();
