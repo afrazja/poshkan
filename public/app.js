@@ -2876,7 +2876,7 @@ elements.backToCards.addEventListener("click", () => {
   renderComparisonPageVisibility();
 });
 
-elements.comparisonControls.addEventListener("change", () => {
+function applyComparisonControls() {
   const unit = VALID_CUSTOM_UNITS.has(elements.comparisonUnit.value) ? elements.comparisonUnit.value : "days";
   const maxByUnit = { hours: 168, days: 365, months: 60 };
   const amount = Math.min(
@@ -2895,6 +2895,13 @@ elements.comparisonControls.addEventListener("change", () => {
   if (periodChanged) state.performance.clear();
   renderComparisonTable();
   if (periodChanged) refreshPerformance();
+}
+
+elements.comparisonControls.addEventListener("change", applyComparisonControls);
+
+elements.comparisonControls.addEventListener("submit", (event) => {
+  event.preventDefault();
+  applyComparisonControls();
 });
 
 elements.comparisonRefresh.addEventListener("click", () => {
