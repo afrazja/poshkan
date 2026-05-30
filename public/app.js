@@ -33,6 +33,7 @@ const state = {
   comparisonUnit: localStorage.getItem("stock-dashboard-comparison-unit") || "days",
   comparisonSort: localStorage.getItem("stock-dashboard-comparison-sort") || "performance",
   comparisonLoading: false,
+  comparisonPageOpen: false,
   performance: new Map(),
   chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
   showMA: localStorage.getItem("stock-dashboard-show-ma") !== "false",
@@ -83,6 +84,9 @@ const elements = {
   groupTabs: document.querySelector("#group-tabs"),
   watchlist: document.querySelector(".watchlist"),
   workspace: document.querySelector(".workspace"),
+  comparisonPage: document.querySelector("#comparison-page"),
+  openComparison: document.querySelector("#open-comparison"),
+  backToCards: document.querySelector("#back-to-cards"),
   accountSummary: document.querySelector("#account-summary"),
   apiKeyPanel: document.querySelector("#api-key-panel"),
   apiKeyCreate: document.querySelector("#create-api-key"),
@@ -1518,6 +1522,14 @@ function renderSectionVisibility() {
   elements.toggleDetails.setAttribute("aria-expanded", String(state.showDetailsPanel));
 }
 
+function renderComparisonPageVisibility() {
+  elements.workspace.hidden = state.comparisonPageOpen;
+  elements.comparisonPage.hidden = !state.comparisonPageOpen;
+  if (state.comparisonPageOpen) {
+    renderComparisonTable();
+  }
+}
+
 function setDetailsPanelVisibility(visible) {
   state.showDetailsPanel = visible;
   localStorage.setItem("stock-dashboard-show-details-panel", String(visible));
@@ -2853,6 +2865,17 @@ elements.groupTabs.addEventListener("focusout", (event) => {
 
 elements.refresh.addEventListener("click", () => refreshQuotes());
 
+elements.openComparison.addEventListener("click", () => {
+  state.comparisonPageOpen = true;
+  renderComparisonPageVisibility();
+  if (!state.performance.size) refreshPerformance();
+});
+
+elements.backToCards.addEventListener("click", () => {
+  state.comparisonPageOpen = false;
+  renderComparisonPageVisibility();
+});
+
 elements.comparisonControls.addEventListener("change", () => {
   const unit = VALID_CUSTOM_UNITS.has(elements.comparisonUnit.value) ? elements.comparisonUnit.value : "days";
   const maxByUnit = { hours: 168, days: 365, months: 60 };
@@ -3010,6 +3033,8 @@ elements.comparisonTable.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action='select']");
   if (!button) return;
   await selectStock(cleanSymbol(button.dataset.symbol));
+  state.comparisonPageOpen = false;
+  renderComparisonPageVisibility();
 });
 
 elements.stockList.addEventListener("dragstart", (event) => {
@@ -3188,6 +3213,7 @@ window.addEventListener("resize", () => {
 renderPeriodButtons();
 renderChartControls();
 renderSectionVisibility();
+renderComparisonPageVisibility();
 state.selected = currentSymbols()[0] || null;
 renderPortfolioMode();
 setAuthMode("signin");

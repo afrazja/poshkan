@@ -144,7 +144,10 @@
         <aside class="watchlist" aria-label="Stock watchlist">
           <div class="panel-title">
             <h2>Watchlist</h2>
-            <button id="refresh-now" title="Refresh quotes">Refresh</button>
+            <div class="panel-actions">
+              <button id="open-comparison" type="button">Table</button>
+              <button id="refresh-now" title="Refresh quotes">Refresh</button>
+            </div>
           </div>
           <div class="watchlist-add">
             <span id="watchlist-add-title">Add stock to selected group</span>
@@ -173,40 +176,6 @@
           <div id="group-label" class="group-label">Groups</div>
           <div id="group-tabs" class="group-tabs" aria-label="Watchlist groups"></div>
           <div id="portfolio-summary" class="portfolio-summary" aria-live="polite"></div>
-          <section class="comparison-panel" aria-label="Stock comparison table">
-            <div class="comparison-head">
-              <div>
-                <span>Comparison</span>
-                <strong id="comparison-period-label">4 days performance</strong>
-              </div>
-              <button id="refresh-comparison" type="button">Update</button>
-            </div>
-            <form id="comparison-controls" class="comparison-controls" autocomplete="off">
-              <label>
-                <span>Period</span>
-                <input id="comparison-amount" type="number" min="1" max="365" value="4" />
-              </label>
-              <label>
-                <span>Unit</span>
-                <select id="comparison-unit">
-                  <option value="hours">Hours</option>
-                  <option value="days" selected>Days</option>
-                  <option value="months">Months</option>
-                </select>
-              </label>
-              <label>
-                <span>Sort</span>
-                <select id="comparison-sort">
-                  <option value="performance">Performance</option>
-                  <option value="value">Value</option>
-                  <option value="pnl">P/L</option>
-                  <option value="price">Price</option>
-                  <option value="symbol">Symbol</option>
-                </select>
-              </label>
-            </form>
-            <div id="comparison-table" class="comparison-table"></div>
-          </section>
           <div id="stock-list" class="stock-list"></div>
         </aside>
 
@@ -283,8 +252,47 @@
             <span id="news-source">Click a stock to load headlines</span>
           </div>
           <div id="news-list" class="news-list"></div>
+          </section>
         </section>
       </section>
+
+      <section id="comparison-page" class="comparison-page" aria-label="Stock comparison table" hidden>
+        <div class="comparison-page-head">
+          <div>
+            <p class="eyebrow">Comparison table</p>
+            <h2>Stock Performance</h2>
+            <span id="comparison-period-label">4 days performance</span>
+          </div>
+          <div class="comparison-page-actions">
+            <button id="refresh-comparison" type="button">Update</button>
+            <button id="back-to-cards" type="button">Back to cards</button>
+          </div>
+        </div>
+        <form id="comparison-controls" class="comparison-controls" autocomplete="off">
+          <label>
+            <span>Period</span>
+            <input id="comparison-amount" type="number" min="1" max="365" value="4" />
+          </label>
+          <label>
+            <span>Unit</span>
+            <select id="comparison-unit">
+              <option value="hours">Hours</option>
+              <option value="days" selected>Days</option>
+              <option value="months">Months</option>
+            </select>
+          </label>
+          <label>
+            <span>Sort</span>
+            <select id="comparison-sort">
+              <option value="performance">Performance</option>
+              <option value="value">Value</option>
+              <option value="pnl">P/L</option>
+              <option value="price">Price</option>
+              <option value="symbol">Symbol</option>
+            </select>
+          </label>
+        </form>
+        <div id="comparison-table" class="comparison-table"></div>
       </section>
     </main>
 
