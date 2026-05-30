@@ -29,6 +29,11 @@ const state = {
   chartPeriod: localStorage.getItem("stock-dashboard-chart-period") || "1d",
   customAmount: Number.parseInt(localStorage.getItem("stock-dashboard-custom-amount"), 10) || 2,
   customUnit: localStorage.getItem("stock-dashboard-custom-unit") || "days",
+  comparisonAmount: Number.parseInt(localStorage.getItem("stock-dashboard-comparison-amount"), 10) || 4,
+  comparisonUnit: localStorage.getItem("stock-dashboard-comparison-unit") || "days",
+  comparisonSort: localStorage.getItem("stock-dashboard-comparison-sort") || "performance",
+  comparisonLoading: false,
+  performance: new Map(),
   chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
   showMA: localStorage.getItem("stock-dashboard-show-ma") !== "false",
   showVolume: localStorage.getItem("stock-dashboard-show-volume") !== "false",
@@ -85,6 +90,13 @@ const elements = {
   apiKeyList: document.querySelector("#api-key-list"),
   apiKeyMessage: document.querySelector("#api-key-message"),
   portfolioSummary: document.querySelector("#portfolio-summary"),
+  comparisonPeriodLabel: document.querySelector("#comparison-period-label"),
+  comparisonControls: document.querySelector("#comparison-controls"),
+  comparisonAmount: document.querySelector("#comparison-amount"),
+  comparisonUnit: document.querySelector("#comparison-unit"),
+  comparisonSort: document.querySelector("#comparison-sort"),
+  comparisonRefresh: document.querySelector("#refresh-comparison"),
+  comparisonTable: document.querySelector("#comparison-table"),
   stockList: document.querySelector("#stock-list"),
   refresh: document.querySelector("#refresh-now"),
   alertTray: document.querySelector("#alert-tray"),
@@ -132,6 +144,14 @@ if (!VALID_PERIODS.has(state.chartPeriod) && state.chartPeriod !== "custom") {
 
 if (!VALID_CUSTOM_UNITS.has(state.customUnit)) {
   state.customUnit = "days";
+}
+
+if (!VALID_CUSTOM_UNITS.has(state.comparisonUnit)) {
+  state.comparisonUnit = "days";
+}
+
+if (!["performance", "value", "pnl", "price", "symbol"].includes(state.comparisonSort)) {
+  state.comparisonSort = "performance";
 }
 
 if (!["line", "candles"].includes(state.chartMode)) {
@@ -682,6 +702,11 @@ function chartLabel() {
   }
 
   return PERIOD_LABELS[state.chartPeriod] || "Selected";
+}
+
+function comparisonLabel() {
+  const amount = Math.max(1, Number(state.comparisonAmount) || 4);
+  return `${amount} ${state.comparisonUnit}`;
 }
 
 function historyQuery(symbol) {
@@ -1410,11 +1435,47 @@ async function refreshQuotes({ quiet = false } = {}) {
     elements.lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
     renderWatchlist();
     renderSelectedQuote();
+    if (!state.performance.size) {
+      refreshPerformance({ quiet: true });
+    }
     if (state.selected) {
       await refreshHistory(state.selected);
     }
   } catch (error) {
     elements.marketStatus.textContent = error.message;
+  }
+}
+
+async function refreshPerformance({ quiet = false } = {}) {
+  const symbols = currentSymbols();
+  if (!symbols.length || state.comparisonLoading) {
+    renderComparisonTable();
+    return;
+  }
+
+  state.comparisonLoading = true;
+  if (!quiet) elements.comparisonPeriodLabel.textContent = `Loading ${comparisonLabel()}...`;
+
+  const params = new URLSearchParams({
+    symbols: symbols.join(","),
+    amount: String(state.comparisonAmount),
+    unit: state.comparisonUnit
+  });
+
+  try {
+    const data = await getJson(`/api/performance?${params.toString()}`);
+    (data.performance || []).forEach((item) => {
+      const symbol = cleanSymbol(item.symbol);
+      if (symbol) state.performance.set(symbol, item);
+    });
+    if (!quiet && data.failed?.length) {
+      elements.marketStatus.textContent = `${data.failed.length} performance item${data.failed.length === 1 ? "" : "s"} unavailable`;
+    }
+  } catch (error) {
+    if (!quiet) elements.marketStatus.textContent = `Performance unavailable: ${error.message}`;
+  } finally {
+    state.comparisonLoading = false;
+    renderComparisonTable();
   }
 }
 
@@ -1781,7 +1842,81 @@ function renderPortfolioMode() {
     ? "Add or update owned stock"
     : isRealWatchlistTab()
       ? "Add stock to real watch list"
-      : "Add stock to selected group";
+    : "Add stock to selected group";
+}
+
+function comparisonRows() {
+  return currentSymbols().map((symbol) => {
+    const quote = state.quotes.get(symbol);
+    const stats = positionStats(symbol);
+    const performance = state.performance.get(symbol);
+    return {
+      symbol,
+      price: quote?.regularMarketPrice,
+      dayChange: quote?.regularMarketChangePercent,
+      performance: performance?.changePercent,
+      shares: stats.shares,
+      value: stats.value,
+      pnl: stats.pnl,
+      pnlPercent: stats.pnlPercent
+    };
+  });
+}
+
+function renderComparisonTable() {
+  elements.comparisonAmount.value = state.comparisonAmount;
+  elements.comparisonUnit.value = state.comparisonUnit;
+  elements.comparisonSort.value = state.comparisonSort;
+  elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} performance`;
+
+  const rows = comparisonRows();
+  if (!rows.length) {
+    elements.comparisonTable.innerHTML = `<div class="empty-state mini">Add stocks to compare them.</div>`;
+    return;
+  }
+
+  const sortKey = state.comparisonSort;
+  rows.sort((a, b) => {
+    if (sortKey === "symbol") return a.symbol.localeCompare(b.symbol);
+    const aValue = Number(a[sortKey]);
+    const bValue = Number(b[sortKey]);
+    return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
+  });
+
+  elements.comparisonTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Price</th>
+          <th>Day</th>
+          <th>${escapeHtml(comparisonLabel())}</th>
+          <th>Shares</th>
+          <th>Value</th>
+          <th>P/L</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map((row) => {
+            const perfClass = (Number(row.performance) || 0) >= 0 ? "up" : "down";
+            const pnlClass = (Number(row.pnl) || 0) >= 0 ? "up" : "down";
+            return `
+              <tr data-symbol="${escapeHtml(row.symbol)}">
+                <td><button type="button" data-action="select" data-symbol="${escapeHtml(row.symbol)}">${escapeHtml(row.symbol)}</button></td>
+                <td>${money(row.price)}</td>
+                <td class="${(Number(row.dayChange) || 0) >= 0 ? "up" : "down"}">${signed(row.dayChange, "%")}</td>
+                <td class="${perfClass}">${signed(row.performance, "%")}</td>
+                <td>${row.shares ? row.shares.toLocaleString() : "--"}</td>
+                <td>${money(row.value)}</td>
+                <td class="${pnlClass}">${signedMoney(row.pnl)}</td>
+              </tr>
+            `;
+          })
+          .join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 function resetPaperAccount() {
@@ -1817,6 +1952,7 @@ function renderWatchlist() {
   renderGroups();
   renderAccountSummary();
   renderPortfolioSummary();
+  renderComparisonTable();
 
   if (!symbols.length) {
     elements.stockList.innerHTML = `<div class="empty-state">${
@@ -2387,9 +2523,11 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
 function setPortfolioMode(mode) {
   state.portfolioMode = mode === "real" ? "real" : "paper";
   state.selected = currentSymbols()[0] || null;
+  state.performance.clear();
   saveGroups();
   renderWatchlist();
   renderSelectedQuote();
+  refreshPerformance({ quiet: true });
   if (state.selected) {
     refreshHistory(state.selected);
     refreshNews(state.selected);
@@ -2399,9 +2537,11 @@ function setPortfolioMode(mode) {
 function setRealTab(tab) {
   state.activeRealTab = tab === "watchlist" ? "watchlist" : "owned";
   state.selected = currentSymbols()[0] || null;
+  state.performance.clear();
   saveGroups();
   renderWatchlist();
   renderSelectedQuote();
+  refreshPerformance({ quiet: true });
   if (state.selected) {
     refreshQuotes();
     selectStock(state.selected);
@@ -2713,6 +2853,32 @@ elements.groupTabs.addEventListener("focusout", (event) => {
 
 elements.refresh.addEventListener("click", () => refreshQuotes());
 
+elements.comparisonControls.addEventListener("change", () => {
+  const unit = VALID_CUSTOM_UNITS.has(elements.comparisonUnit.value) ? elements.comparisonUnit.value : "days";
+  const maxByUnit = { hours: 168, days: 365, months: 60 };
+  const amount = Math.min(
+    Math.max(Number.parseInt(elements.comparisonAmount.value, 10) || 4, 1),
+    maxByUnit[unit]
+  );
+  const periodChanged = amount !== state.comparisonAmount || unit !== state.comparisonUnit;
+
+  state.comparisonAmount = amount;
+  state.comparisonUnit = unit;
+  state.comparisonSort = elements.comparisonSort.value;
+  localStorage.setItem("stock-dashboard-comparison-amount", String(amount));
+  localStorage.setItem("stock-dashboard-comparison-unit", unit);
+  localStorage.setItem("stock-dashboard-comparison-sort", state.comparisonSort);
+
+  if (periodChanged) state.performance.clear();
+  renderComparisonTable();
+  if (periodChanged) refreshPerformance();
+});
+
+elements.comparisonRefresh.addEventListener("click", () => {
+  state.performance.clear();
+  refreshPerformance();
+});
+
 elements.accountSummary.addEventListener("click", (event) => {
   if (event.target.closest("#reset-paper-account")) {
     resetPaperAccount();
@@ -2838,6 +3004,12 @@ elements.stockList.addEventListener("click", async (event) => {
   if (button.dataset.action === "select") {
     await selectStock(symbol);
   }
+});
+
+elements.comparisonTable.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action='select']");
+  if (!button) return;
+  await selectStock(cleanSymbol(button.dataset.symbol));
 });
 
 elements.stockList.addEventListener("dragstart", (event) => {

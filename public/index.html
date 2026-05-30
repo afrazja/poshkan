@@ -173,6 +173,40 @@
           <div id="group-label" class="group-label">Groups</div>
           <div id="group-tabs" class="group-tabs" aria-label="Watchlist groups"></div>
           <div id="portfolio-summary" class="portfolio-summary" aria-live="polite"></div>
+          <section class="comparison-panel" aria-label="Stock comparison table">
+            <div class="comparison-head">
+              <div>
+                <span>Comparison</span>
+                <strong id="comparison-period-label">4 days performance</strong>
+              </div>
+              <button id="refresh-comparison" type="button">Update</button>
+            </div>
+            <form id="comparison-controls" class="comparison-controls" autocomplete="off">
+              <label>
+                <span>Period</span>
+                <input id="comparison-amount" type="number" min="1" max="365" value="4" />
+              </label>
+              <label>
+                <span>Unit</span>
+                <select id="comparison-unit">
+                  <option value="hours">Hours</option>
+                  <option value="days" selected>Days</option>
+                  <option value="months">Months</option>
+                </select>
+              </label>
+              <label>
+                <span>Sort</span>
+                <select id="comparison-sort">
+                  <option value="performance">Performance</option>
+                  <option value="value">Value</option>
+                  <option value="pnl">P/L</option>
+                  <option value="price">Price</option>
+                  <option value="symbol">Symbol</option>
+                </select>
+              </label>
+            </form>
+            <div id="comparison-table" class="comparison-table"></div>
+          </section>
           <div id="stock-list" class="stock-list"></div>
         </aside>
 

@@ -450,6 +450,41 @@ function demoNews(symbol) {
   ];
 }
 
+async function performanceForSymbol(symbol, config) {
+  const chartParams = config.custom
+    ? `period1=${config.period1}&period2=${config.period2}&interval=${config.interval}`
+    : `range=${config.range}&interval=${config.interval}`;
+  const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    symbol
+  )}?${chartParams}&includePrePost=false`;
+  const data = await fetchJson(endpoint);
+  const result = data?.chart?.result?.[0];
+  const timestamps = result?.timestamp || [];
+  const quote = result?.indicators?.quote?.[0] || {};
+  const points = timestamps
+    .map((time, index) => ({ time, price: quote.close?.[index] }))
+    .filter((point) => Number.isFinite(point.price));
+
+  if (points.length < 2) {
+    throw new Error(`Not enough performance data for ${symbol}`);
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const change = last.price - first.price;
+  const changePercent = first.price ? (change / first.price) * 100 : 0;
+
+  return {
+    symbol,
+    startPrice: Number(first.price.toFixed(4)),
+    endPrice: Number(last.price.toFixed(4)),
+    change: Number(change.toFixed(4)),
+    changePercent: Number(changePercent.toFixed(4)),
+    startTime: first.time,
+    endTime: last.time
+  };
+}
+
 async function quotesHandler(req, res) {
   const symbols = (getQuery(req).get("symbols") || "AAPL,MSFT,NVDA")
     .split(",")
@@ -495,6 +530,39 @@ async function quotesHandler(req, res) {
       quotes: symbols.map(demoQuote)
     });
   }
+}
+
+async function performanceHandler(req, res) {
+  const query = getQuery(req);
+  const symbols = (query.get("symbols") || "")
+    .split(",")
+    .map(cleanSymbol)
+    .filter(Boolean)
+    .slice(0, MAX_QUOTE_SYMBOLS);
+  const config = getCustomHistoryConfig(query.get("amount") || 4, query.get("unit") || "days");
+
+  if (!symbols.length) {
+    return json(res, 400, { error: "Add at least one stock symbol." });
+  }
+
+  const results = await Promise.allSettled(symbols.map((symbol) => performanceForSymbol(symbol, config)));
+  const performance = [];
+  const failed = [];
+
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      performance.push(result.value);
+    } else {
+      failed.push({ symbol: symbols[index], error: result.reason?.message || "Performance unavailable" });
+    }
+  });
+
+  return json(res, 200, {
+    source: failed.length ? "mixed" : "yahoo",
+    periodLabel: config.label,
+    performance,
+    failed
+  });
 }
 
 async function historyHandler(req, res) {
@@ -985,6 +1053,7 @@ const server = http.createServer(async (req, res) => {
     const path = new URL(req.url, `http://${req.headers.host}`).pathname;
 
     if (path === "/api/quotes") return quotesHandler(req, res);
+    if (path === "/api/performance") return performanceHandler(req, res);
     if (path === "/api/history") return historyHandler(req, res);
     if (path === "/api/news") return newsHandler(req, res);
     if (path === "/api/keys") return listApiKeysHandler(req, res);

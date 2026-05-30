@@ -1014,6 +1014,126 @@ h2 {
   font-size: 0.94rem;
 }
 
+.comparison-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #15191d;
+  padding: 12px;
+}
+
+.comparison-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.comparison-head span,
+.comparison-controls span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.comparison-head strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.comparison-head button {
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 850;
+  padding: 0 9px;
+}
+
+.comparison-controls {
+  display: grid;
+  grid-template-columns: 62px 1fr 1.2fr;
+  gap: 6px;
+}
+
+.comparison-controls label {
+  display: grid;
+  gap: 5px;
+}
+
+.comparison-controls input,
+.comparison-controls select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #20262b;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 750;
+  padding: 0 7px;
+}
+
+.comparison-table {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid rgba(238, 243, 245, 0.08);
+  border-radius: 7px;
+}
+
+.comparison-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.comparison-table th,
+.comparison-table td {
+  border-bottom: 1px solid rgba(238, 243, 245, 0.07);
+  padding: 7px 6px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.comparison-table th:first-child,
+.comparison-table td:first-child {
+  position: sticky;
+  left: 0;
+  background: #15191d;
+  text-align: left;
+}
+
+.comparison-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #20262b;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.comparison-table td button {
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  font-weight: 900;
+  padding: 0;
+}
+
+.empty-state.mini {
+  min-height: 74px;
+  border: 0;
+  padding: 12px;
+}
+
 .stock-list {
   display: grid;
   align-items: start;
@@ -1790,6 +1910,10 @@ h2 {
 
   .real-position-form {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .comparison-controls {
+    grid-template-columns: 1fr;
   }
 
   .position-editor,
