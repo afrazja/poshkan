@@ -2530,16 +2530,19 @@ elements.authModeButtons.forEach((button) => {
 
 elements.signOut.addEventListener("click", async () => {
   if (!state.supabase) return;
+  const client = state.supabase;
   elements.signOut.disabled = true;
   elements.signOut.textContent = "Signing out...";
+
+  clearSignedOutState();
+
   try {
-    const { error } = await state.supabase.auth.signOut();
+    const { error } = await client.auth.signOut({ scope: "local" });
     if (error) throw error;
-    clearSignedOutState();
   } catch (error) {
-    await state.supabase.auth.signOut({ scope: "local" }).catch(() => {});
-    clearSignedOutState(`Signed out locally. ${error.message || "Cloud sign-out did not finish."}`);
+    setAuthMessage(`Signed out locally. ${error.message || "Cloud sign-out did not finish."}`, "success");
   } finally {
+    client.auth.signOut().catch(() => {});
     elements.signOut.disabled = false;
     elements.signOut.textContent = "Sign out";
   }
