@@ -200,7 +200,8 @@ function normalizePortfolio(value) {
         cleanSymbol(symbol),
         {
           shares: Math.max(0, Number(position?.shares) || 0),
-          avgCost: Math.max(0, Number(position?.avgCost) || 0)
+          avgCost: Math.max(0, Number(position?.avgCost) || 0),
+          openedAt: Number(position?.openedAt) || null
         }
       ])
       .filter(([symbol]) => symbol)
@@ -247,6 +248,9 @@ function mergeLocalRealPortfolio(localPositions = {}, localWatchlist = []) {
   Object.entries(normalizePortfolio(localPositions)).forEach(([symbol, position]) => {
     if (!cloudPositions[symbol] && Number(position.shares) > 0) {
       cloudPositions[symbol] = position;
+      changed = true;
+    } else if (cloudPositions[symbol] && !cloudPositions[symbol].openedAt && position.openedAt) {
+      cloudPositions[symbol].openedAt = position.openedAt;
       changed = true;
     }
   });
@@ -410,6 +414,11 @@ function positionStats(symbol) {
   const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
 
   return { shares, avgCost, value, cost, pnl, pnlPercent };
+}
+
+function positionOpenedAt(symbol) {
+  const openedAt = Number(positionFor(symbol)?.openedAt);
+  return Number.isFinite(openedAt) && openedAt > 0 ? openedAt : null;
 }
 
 function portfolioTotals(symbols = currentSymbols()) {
@@ -1182,6 +1191,15 @@ async function syncPaperAccount({ quiet = true } = {}) {
     state.realizedPnl = Number(data.account?.realizedPnl) || 0;
     firstGroup.portfolio ||= {};
     firstGroup.symbols ||= [];
+    const firstBuyBySymbol = new Map();
+    (data.trades || []).forEach((trade) => {
+      if (String(trade.side).toLowerCase() !== "buy") return;
+      const symbol = cleanSymbol(trade.symbol);
+      const time = Date.parse(trade.created_at);
+      if (!symbol || !Number.isFinite(time)) return;
+      const current = firstBuyBySymbol.get(symbol);
+      if (!current || time < current) firstBuyBySymbol.set(symbol, time);
+    });
 
     (data.positions || []).forEach((position) => {
       const symbol = cleanSymbol(position.symbol);
@@ -1196,7 +1214,8 @@ async function syncPaperAccount({ quiet = true } = {}) {
       if (Number(existing.shares) !== shares || Number(existing.avgCost) !== Number(position.avgCost)) {
         firstGroup.portfolio[symbol] = {
           shares,
-          avgCost: Number(position.avgCost) || 0
+          avgCost: Number(position.avgCost) || 0,
+          openedAt: existing.openedAt || firstBuyBySymbol.get(symbol) || Number(position.openedAt) || null
         };
         changed = true;
       }
@@ -1466,6 +1485,13 @@ async function refreshPerformance({ quiet = false } = {}) {
     amount: String(state.comparisonAmount),
     unit: state.comparisonUnit
   });
+  const heldSince = symbols
+    .map((symbol) => {
+      const openedAt = positionOpenedAt(symbol);
+      return openedAt ? `${symbol}:${Math.floor(openedAt / 1000)}` : null;
+    })
+    .filter(Boolean);
+  if (heldSince.length) params.set("heldSince", heldSince.join(","));
 
   try {
     const data = await getJson(`/api/performance?${params.toString()}`);
@@ -1574,9 +1600,11 @@ async function executeBrokerTrade(symbol, action, quantity) {
     group.symbols = [data.quote.symbol, ...group.symbols].slice(0, 20);
   }
   group.portfolio ||= {};
+  const existing = group.portfolio[data.quote.symbol] || {};
   group.portfolio[data.quote.symbol] = {
     shares: data.position.shares,
-    avgCost: data.position.avgCost
+    avgCost: data.position.avgCost,
+    openedAt: existing.openedAt || Date.now()
   };
   if (state.selected === symbol) {
     state.selected = data.quote.symbol;
@@ -1611,6 +1639,7 @@ function executeLocalTrade(symbol, action, quantity) {
     }
 
     const existingCost = position.shares * position.avgCost;
+    if (!position.shares) position.openedAt = Date.now();
     position.shares += qty;
     position.avgCost = (existingCost + cost) / position.shares;
     state.cash -= cost;
@@ -1628,6 +1657,7 @@ function executeLocalTrade(symbol, action, quantity) {
     state.cash += qty * price;
     if (position.shares === 0) {
       position.avgCost = 0;
+      position.openedAt = null;
     }
     elements.marketStatus.textContent = `Sold ${qty} ${symbol} at ${moneyAxis(price)} (${signedMoney(realized)} realized)`;
   }
@@ -1863,11 +1893,13 @@ function comparisonRows() {
     const quote = state.quotes.get(symbol);
     const stats = positionStats(symbol);
     const performance = state.performance.get(symbol);
+    const performanceLabel = performance?.effectiveLabel || "";
     return {
       symbol,
       price: quote?.regularMarketPrice,
       dayChange: quote?.regularMarketChangePercent,
       performance: performance?.changePercent,
+      performanceLabel,
       shares: stats.shares,
       value: stats.value,
       pnl: stats.pnl,
@@ -1924,7 +1956,9 @@ function renderComparisonTable() {
                 <td><button type="button" data-action="select" data-symbol="${escapeHtml(row.symbol)}">${escapeHtml(row.symbol)}</button></td>
                 <td>${money(row.price)}</td>
                 <td class="${(Number(row.dayChange) || 0) >= 0 ? "up" : "down"}">${signed(row.dayChange, "%")}</td>
-                <td class="${perfClass}">${signed(row.performance, "%")}</td>
+                <td class="${perfClass}">${signed(row.performance, "%")}${
+                  row.performanceLabel ? ` <small>(${escapeHtml(row.performanceLabel)})</small>` : ""
+                }</td>
                 <td>${row.shares ? row.shares.toLocaleString() : "--"}</td>
                 <td>${money(row.value)}</td>
                 <td class="${pnlClass}">${signedMoney(row.pnl)}</td>
@@ -2526,7 +2560,12 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
   if (!quote) return;
 
   const resolvedSymbol = cleanSymbol(quote.symbol);
-  state.realPositions[resolvedSymbol] = { shares: positionShares, avgCost: positionAvgCost };
+  const existing = state.realPositions[resolvedSymbol] || {};
+  state.realPositions[resolvedSymbol] = {
+    shares: positionShares,
+    avgCost: positionAvgCost,
+    openedAt: existing.openedAt || Date.now()
+  };
   state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
   state.quotes.set(resolvedSymbol, quote);
   state.selected = resolvedSymbol;

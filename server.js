@@ -481,8 +481,16 @@ async function performanceForSymbol(symbol, config) {
     change: Number(change.toFixed(4)),
     changePercent: Number(changePercent.toFixed(4)),
     startTime: first.time,
-    endTime: last.time
+    endTime: last.time,
+    effectiveLabel: config.effectiveLabel || ""
   };
+}
+
+function holdingPeriodLabel(seconds) {
+  const days = Math.max(1, Math.ceil(seconds / 86400));
+  if (days < 31) return `${days} day${days === 1 ? "" : "s"}`;
+  const months = Math.max(1, Math.ceil(days / 30));
+  return `${months} month${months === 1 ? "" : "s"}`;
 }
 
 async function quotesHandler(req, res) {
@@ -540,12 +548,36 @@ async function performanceHandler(req, res) {
     .filter(Boolean)
     .slice(0, MAX_QUOTE_SYMBOLS);
   const config = getCustomHistoryConfig(query.get("amount") || 4, query.get("unit") || "days");
+  const heldSince = new Map(
+    (query.get("heldSince") || "")
+      .split(",")
+      .map((item) => {
+        const [rawSymbol, rawTime] = item.split(":");
+        const symbol = cleanSymbol(rawSymbol);
+        const time = Math.max(0, Number.parseInt(rawTime, 10) || 0);
+        return symbol && time ? [symbol, time] : null;
+      })
+      .filter(Boolean)
+  );
 
   if (!symbols.length) {
     return json(res, 400, { error: "Add at least one stock symbol." });
   }
 
-  const results = await Promise.allSettled(symbols.map((symbol) => performanceForSymbol(symbol, config)));
+  const results = await Promise.allSettled(
+    symbols.map((symbol) => {
+      const heldTime = heldSince.get(symbol);
+      const effectiveConfig = { ...config };
+      if (heldTime && config.period1 && heldTime > config.period1) {
+        const heldSeconds = Math.floor(Date.now() / 1000) - heldTime;
+        effectiveConfig.period1 = heldTime;
+        effectiveConfig.custom = true;
+        effectiveConfig.interval = heldSeconds <= 5 * 86400 ? "5m" : heldSeconds <= 30 * 86400 ? "1h" : config.interval;
+        effectiveConfig.effectiveLabel = holdingPeriodLabel(heldSeconds);
+      }
+      return performanceForSymbol(symbol, effectiveConfig);
+    })
+  );
   const performance = [];
   const failed = [];
 

@@ -1164,6 +1164,11 @@ h2 {
   padding: 0;
 }
 
+.comparison-table td small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .empty-state.mini {
   min-height: 74px;
   border: 0;
