@@ -761,6 +761,10 @@ h2 {
   color: var(--red);
 }
 
+.mobile-nav {
+  display: none;
+}
+
 .pulse {
   width: 10px;
   height: 10px;
@@ -2019,6 +2023,10 @@ h2 {
 }
 
 @media (max-width: 880px) {
+  body {
+    padding-bottom: 76px;
+  }
+
   .shell {
     padding: 18px;
   }
@@ -2122,6 +2130,60 @@ h2 {
 
   .price-block {
     text-align: left;
+  }
+
+  .mobile-nav {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    border: 1px solid rgba(238, 243, 245, 0.12);
+    border-radius: 8px;
+    background: rgba(17, 19, 21, 0.94);
+    box-shadow: var(--shadow);
+    padding: 6px;
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-nav button {
+    position: relative;
+    min-width: 0;
+    height: 44px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+
+  .mobile-nav button.active {
+    border-color: rgba(98, 200, 221, 0.38);
+    background: rgba(98, 200, 221, 0.13);
+    color: var(--text);
+  }
+
+  .mobile-nav button.has-alerts:not(.active) {
+    color: var(--gold);
+  }
+
+  .mobile-nav small {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    min-width: 17px;
+    height: 17px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--gold);
+    color: #111315;
+    font-size: 0.62rem;
+    line-height: 1;
   }
 }
 

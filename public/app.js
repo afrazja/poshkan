@@ -84,6 +84,8 @@ const elements = {
   watchlistAddTitle: document.querySelector("#watchlist-add-title"),
   groupLabel: document.querySelector("#group-label"),
   portfolioModeButtons: document.querySelectorAll("[data-portfolio-mode]"),
+  mobileNavButtons: document.querySelectorAll("[data-mobile-nav]"),
+  mobileAlertCount: document.querySelector("#mobile-alert-count"),
   input: document.querySelector("#stock-symbol"),
   addStockMessage: document.querySelector("#add-stock-message"),
   groupTabs: document.querySelector("#group-tabs"),
@@ -687,6 +689,7 @@ function evaluateAlerts(quotes) {
 function renderAlertTray() {
   if (!state.alertEvents.length) {
     elements.alertTray.innerHTML = "";
+    renderMobileNav();
     return;
   }
 
@@ -704,6 +707,7 @@ function renderAlertTray() {
       `
     )
     .join("");
+  renderMobileNav();
 }
 
 function cardSparkline(symbol, quote, direction) {
@@ -1680,6 +1684,23 @@ function renderComparisonPageVisibility() {
   if (state.comparisonPageOpen) {
     renderComparisonTable();
   }
+  renderMobileNav();
+}
+
+function renderMobileNav() {
+  elements.mobileNavButtons.forEach((button) => {
+    const target = button.dataset.mobileNav;
+    const active =
+      (target === "table" && state.comparisonPageOpen) ||
+      (!state.comparisonPageOpen && target === state.portfolioMode);
+    button.classList.toggle("active", active);
+    button.classList.toggle("has-alerts", target === "alerts" && state.alertEvents.length > 0);
+  });
+
+  if (elements.mobileAlertCount) {
+    elements.mobileAlertCount.hidden = !state.alertEvents.length;
+    elements.mobileAlertCount.textContent = String(state.alertEvents.length);
+  }
 }
 
 function setDetailsPanelVisibility(visible) {
@@ -2056,6 +2077,7 @@ function renderPortfolioMode() {
       ? "Add stock to real watch list"
     : "Add stock to selected group";
   elements.stockSearch.placeholder = isRealMode() ? "Search real stocks" : "Search group stocks";
+  renderMobileNav();
 }
 
 function comparisonRows() {
@@ -2872,6 +2894,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
 
 function setPortfolioMode(mode) {
   state.portfolioMode = mode === "real" ? "real" : "paper";
+  state.comparisonPageOpen = false;
   clearStockSearch();
   state.selected = currentSymbols()[0] || null;
   state.performance.clear();
@@ -2879,6 +2902,7 @@ function setPortfolioMode(mode) {
   renderWatchlist();
   renderSelectedQuote();
   refreshPerformance({ quiet: true });
+  renderComparisonPageVisibility();
   if (state.selected) {
     refreshHistory(state.selected);
     refreshNews(state.selected);
@@ -2991,6 +3015,34 @@ elements.realPositionForm.addEventListener("submit", async (event) => {
 
 elements.portfolioModeButtons.forEach((button) => {
   button.addEventListener("click", () => setPortfolioMode(button.dataset.portfolioMode));
+});
+
+elements.mobileNavButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const target = button.dataset.mobileNav;
+    if (target === "paper" || target === "real") {
+      setPortfolioMode(target);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (target === "table") {
+      state.comparisonPageOpen = true;
+      renderComparisonPageVisibility();
+      refreshPerformance({ quiet: true });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (target === "alerts") {
+      if (!state.alertEvents.length) {
+        elements.marketStatus.textContent = "No active alerts right now";
+        document.querySelector(".status-row")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      elements.alertTray.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
 });
 
 elements.authForm.addEventListener("submit", async (event) => {

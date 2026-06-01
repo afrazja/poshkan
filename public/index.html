@@ -300,6 +300,23 @@
         </form>
         <div id="comparison-table" class="comparison-table"></div>
       </section>
+
+      <nav class="mobile-nav" aria-label="Mobile app navigation">
+        <button type="button" data-mobile-nav="paper">
+          <span>Paper</span>
+        </button>
+        <button type="button" data-mobile-nav="real">
+          <span>Real</span>
+        </button>
+        <button type="button" data-mobile-nav="table">
+          <span>Table</span>
+        </button>
+        <button type="button" data-mobile-nav="alerts">
+          <span>Alerts</span>
+          <small id="mobile-alert-count" hidden>0</small>
+        </button>
+      </nav>
+      </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
