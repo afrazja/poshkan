@@ -6,6 +6,9 @@ import { extname, join, normalize } from "node:path";
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = join(process.cwd(), "public");
 const MAX_QUOTE_SYMBOLS = 120;
+const QUOTE_CACHE_TTL_MS = 20_000;
+const QUOTE_STALE_TTL_MS = 10 * 60_000;
+const quoteCache = new Map();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -261,7 +264,19 @@ function demoQuote(symbol, index = 0, requestedSymbol = symbol) {
     regularMarketDayHigh: Number((price + 1.8).toFixed(2)),
     regularMarketDayLow: Number((price - 2.1).toFixed(2)),
     marketState: "DEMO",
-    source: "Demo fallback"
+    source: "Demo fallback",
+    cacheStatus: "demo",
+    fetchedAt: Date.now(),
+    dataAgeSeconds: 0
+  };
+}
+
+function stampQuote(quote, cacheStatus, fetchedAt = Date.now()) {
+  return {
+    ...quote,
+    cacheStatus,
+    fetchedAt,
+    dataAgeSeconds: Math.max(0, Math.round((Date.now() - fetchedAt) / 1000))
   };
 }
 
@@ -303,7 +318,10 @@ function quoteFromChart(symbol, data, requestedSymbol = symbol) {
     regularMarketDayHigh: meta.regularMarketDayHigh || null,
     regularMarketDayLow: meta.regularMarketDayLow || null,
     marketState,
-    source: "Yahoo chart"
+    source: "Yahoo chart",
+    cacheStatus: "fresh",
+    fetchedAt: Date.now(),
+    dataAgeSeconds: 0
   };
 }
 
@@ -334,7 +352,7 @@ function invalidSymbolError(symbol, cause, suggestions = []) {
   return error;
 }
 
-async function quoteForSymbol(symbol) {
+async function fetchFreshQuoteForSymbol(symbol) {
   const chartEndpoint = (nextSymbol) =>
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
       nextSymbol
@@ -352,6 +370,26 @@ async function quoteForSymbol(symbol) {
       throw fallbackError;
     }
     throw invalidSymbolError(symbol, error, suggestions);
+  }
+}
+
+async function quoteForSymbol(symbol) {
+  const cached = quoteCache.get(symbol);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt <= QUOTE_CACHE_TTL_MS) {
+    return stampQuote(cached.quote, "cached", cached.fetchedAt);
+  }
+
+  try {
+    const quote = await fetchFreshQuoteForSymbol(symbol);
+    const fetchedAt = Date.now();
+    quoteCache.set(symbol, { quote: stampQuote(quote, "fresh", fetchedAt), fetchedAt });
+    return stampQuote(quote, "fresh", fetchedAt);
+  } catch (error) {
+    if (cached && now - cached.fetchedAt <= QUOTE_STALE_TTL_MS) {
+      return stampQuote(cached.quote, "stale", cached.fetchedAt);
+    }
+    throw error;
   }
 }
 
@@ -524,10 +562,19 @@ async function quotesHandler(req, res) {
       return [demoQuote(symbols[index], index)];
     });
     const failed = quoteResults.filter((result) => result.status === "rejected" && !result.reason?.invalidSymbol).length;
+    const cached = quotes.filter((quote) => quote.cacheStatus === "cached").length;
+    const stale = quotes.filter((quote) => quote.cacheStatus === "stale").length;
+    const demo = quotes.filter((quote) => quote.cacheStatus === "demo").length;
+    const live = quotes.length - cached - stale - demo;
 
     return json(res, 200, {
-      source: failed ? "mixed" : "yahoo-chart",
-      warning: failed ? `${failed} symbol(s) could not be refreshed and are showing demo fallback.` : null,
+      source: failed || stale || demo ? "mixed" : cached ? "cached" : "yahoo-chart",
+      warning: failed
+        ? `${failed} symbol(s) could not be refreshed and are showing demo fallback.`
+        : stale
+          ? `${stale} symbol(s) are showing recently cached prices while live refresh recovers.`
+          : null,
+      reliability: { live, cached, stale, demo },
       quotes,
       invalids
     });
@@ -535,6 +582,7 @@ async function quotesHandler(req, res) {
     return json(res, 200, {
       source: "demo",
       warning: error.message,
+      reliability: { live: 0, cached: 0, stale: 0, demo: symbols.length },
       quotes: symbols.map(demoQuote)
     });
   }

@@ -1608,6 +1608,16 @@ async function lookupStockBeforeAdd(symbol) {
   return quote;
 }
 
+function quoteReliabilityText(data) {
+  const reliability = data?.reliability || {};
+  const parts = [];
+  if (reliability.live) parts.push(`${reliability.live} live`);
+  if (reliability.cached) parts.push(`${reliability.cached} cached`);
+  if (reliability.stale) parts.push(`${reliability.stale} stale`);
+  if (reliability.demo) parts.push(`${reliability.demo} demo`);
+  return parts.length ? parts.join(" / ") : "";
+}
+
 async function refreshQuotes({ quiet = false } = {}) {
   const symbols = currentSymbols();
   if (!symbols.length) {
@@ -1640,14 +1650,20 @@ async function refreshQuotes({ quiet = false } = {}) {
       if (!data.invalids?.length) {
         elements.marketStatus.textContent = triggeredCount
           ? `${triggeredCount} price alert${triggeredCount === 1 ? "" : "s"} triggered`
-          : "Market prices from Yahoo Finance chart feed";
+          : `Market prices from Yahoo Finance chart feed${quoteReliabilityText(data) ? ` (${quoteReliabilityText(data)})` : ""}`;
       }
+    } else if (data.source === "cached") {
+      elements.marketStatus.textContent = `Quotes served from short cache (${quoteReliabilityText(data)})`;
     } else if (data.source === "mixed") {
-      elements.marketStatus.textContent = data.warning || "Some prices refreshed; some are fallback demo values";
+      elements.marketStatus.textContent = `${data.warning || "Some prices refreshed; some are cached or fallback values"}${
+        quoteReliabilityText(data) ? ` (${quoteReliabilityText(data)})` : ""
+      }`;
     } else {
       elements.marketStatus.textContent = "Demo prices shown because live market data is unreachable";
     }
-    elements.lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+    elements.lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}${
+      quoteReliabilityText(data) ? ` | ${quoteReliabilityText(data)}` : ""
+    }`;
     renderWatchlist();
     renderSelectedQuote();
     if (!state.performance.size) {
@@ -2492,9 +2508,11 @@ function renderSelectedQuote() {
   const marketTime = quote.regularMarketTime
     ? new Date(quote.regularMarketTime * 1000).toLocaleTimeString()
     : "time unknown";
+  const dataAge = Number.isFinite(Number(quote.dataAgeSeconds)) ? ` | age ${Number(quote.dataAgeSeconds)}s` : "";
+  const cacheStatus = quote.cacheStatus && quote.cacheStatus !== "fresh" ? ` | ${quote.cacheStatus}` : "";
   elements.selectedChange.textContent = `${signed(change)} (${signed(quote.regularMarketChangePercent, "%")}) | Vol ${compact(
     quote.regularMarketVolume
-  )} | ${quote.marketState || "DATA"} | ${marketTime}`;
+  )} | ${quote.marketState || "DATA"} | ${marketTime}${cacheStatus}${dataAge}`;
   elements.selectedChange.className = direction;
   const stats = positionStats(quote.symbol);
   const pnlDirection = stats.pnl >= 0 ? "up" : "down";
