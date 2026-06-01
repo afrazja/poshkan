@@ -1234,7 +1234,7 @@ h2 {
 }
 
 .real-editor {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 68px 68px;
 }
 
 .alert-editor {
@@ -1335,6 +1335,16 @@ h2 {
 .real-editor button {
   border-color: rgba(98, 200, 221, 0.34);
   color: var(--cyan);
+}
+
+.real-editor button[data-real-trade-action="buy"] {
+  border-color: rgba(68, 208, 123, 0.38);
+  color: var(--green);
+}
+
+.real-editor button[data-real-trade-action="sell"] {
+  border-color: rgba(255, 107, 107, 0.38);
+  color: var(--red);
 }
 
 .trade-editor button[data-trade-action="buy"] {

@@ -2091,14 +2091,17 @@ function renderWatchlist() {
                     : `
                 <div class="real-editor">
                   <label>
-                    <span>Real shares</span>
-                    <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
+                    <span>Real trade</span>
+                    <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
                   </label>
                   <label>
-                    <span>Avg cost</span>
-                    <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
+                    <span>Trade price</span>
+                    <input type="number" min="0" step="0.01" inputmode="decimal" data-real-trade-price data-symbol="${symbol}" value="${
+                      Number.isFinite(quote?.regularMarketPrice) ? Number(quote.regularMarketPrice).toFixed(2) : ""
+                    }" placeholder="Price" />
                   </label>
-                  <button type="button" data-real-action="save" data-symbol="${symbol}">Save</button>
+                  <button type="button" data-real-trade-action="buy" data-symbol="${symbol}">Buy</button>
+                  <button type="button" data-real-trade-action="sell" data-symbol="${symbol}">Sell</button>
                 </div>
                     `
                 }
@@ -2577,6 +2580,63 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
   await refreshNews(resolvedSymbol);
 }
 
+async function executeRealTrade(symbol, action, quantity, tradePrice) {
+  const cleaned = cleanSymbol(symbol);
+  const qty = Math.max(0, Number(quantity) || 0);
+  const price = Math.max(0, Number(tradePrice) || 0);
+
+  if (!cleaned || !qty || !price) {
+    elements.marketStatus.textContent = "Enter real shares and trade price";
+    return;
+  }
+
+  const quote = state.quotes.get(cleaned) || (await lookupStockBeforeAdd(cleaned));
+  const resolvedSymbol = cleanSymbol(quote?.symbol || cleaned);
+  const position = state.realPositions[resolvedSymbol] || { shares: 0, avgCost: 0, openedAt: null };
+
+  if (action === "buy") {
+    const existingCost = Number(position.shares) * Number(position.avgCost);
+    const addedCost = qty * price;
+    position.shares = Math.max(0, Number(position.shares) || 0) + qty;
+    position.avgCost = position.shares ? (existingCost + addedCost) / position.shares : 0;
+    position.openedAt ||= Date.now();
+    state.realPositions[resolvedSymbol] = {
+      shares: Number(position.shares.toFixed(6)),
+      avgCost: Number(position.avgCost.toFixed(4)),
+      openedAt: position.openedAt
+    };
+    state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
+    state.activeRealTab = "owned";
+    elements.marketStatus.textContent = `Bought ${qty} real ${resolvedSymbol} at ${moneyAxis(price)}`;
+  } else {
+    const currentShares = Number(position.shares) || 0;
+    if (qty > currentShares) {
+      elements.marketStatus.textContent = `You only have ${currentShares.toLocaleString()} real ${resolvedSymbol} shares`;
+      return;
+    }
+    position.shares = Math.max(0, currentShares - qty);
+    if (position.shares <= 0) {
+      delete state.realPositions[resolvedSymbol];
+      state.selected = currentSymbols()[0] || null;
+    } else {
+      state.realPositions[resolvedSymbol] = {
+        shares: Number(position.shares.toFixed(6)),
+        avgCost: Number(position.avgCost.toFixed(4)),
+        openedAt: position.openedAt || Date.now()
+      };
+    }
+    elements.marketStatus.textContent = `Sold ${qty} real ${resolvedSymbol} at ${moneyAxis(price)}`;
+  }
+
+  if (quote?.symbol) state.quotes.set(resolvedSymbol, quote);
+  if (action === "buy") state.selected = resolvedSymbol;
+  state.performance.clear();
+  saveGroups();
+  renderWatchlist();
+  renderSelectedQuote();
+  refreshPerformance({ quiet: true });
+}
+
 function setPortfolioMode(mode) {
   state.portfolioMode = mode === "real" ? "real" : "paper";
   state.selected = currentSymbols()[0] || null;
@@ -3037,6 +3097,15 @@ elements.stockList.addEventListener("click", async (event) => {
     const card = button.closest(".stock-card");
     const qty = card?.querySelector("input[data-trade-qty]")?.value;
     executeTrade(symbol, button.dataset.tradeAction, qty);
+    return;
+  }
+
+  if (button.dataset.realTradeAction) {
+    const symbol = cleanSymbol(button.dataset.symbol);
+    const card = button.closest(".stock-card");
+    const qty = card?.querySelector("input[data-real-trade-qty]")?.value;
+    const price = card?.querySelector("input[data-real-trade-price]")?.value;
+    await executeRealTrade(symbol, button.dataset.realTradeAction, qty, price);
     return;
   }
 
