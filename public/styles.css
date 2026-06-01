@@ -1040,6 +1040,75 @@ h2 {
   font-size: 0.94rem;
 }
 
+.real-transaction-history {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid rgba(238, 243, 245, 0.08);
+  border-radius: 8px;
+  background: #15191d;
+  padding: 12px;
+}
+
+.real-transaction-history[hidden] {
+  display: none;
+}
+
+.history-head,
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-head span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.history-head button {
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+  padding: 0 9px;
+}
+
+.history-list {
+  display: grid;
+  gap: 7px;
+}
+
+.history-row {
+  border-top: 1px solid rgba(238, 243, 245, 0.07);
+  padding-top: 7px;
+}
+
+.history-row div:last-child {
+  text-align: right;
+}
+
+.history-row strong,
+.history-row span {
+  display: block;
+}
+
+.history-row strong {
+  font-size: 0.82rem;
+}
+
+.history-row span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .stock-search {
   display: grid;
   gap: 6px;
@@ -2075,6 +2144,15 @@ h2 {
   .panel-title {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .history-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .history-row div:last-child {
+    text-align: left;
   }
 
   .stock-card {

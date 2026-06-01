@@ -5,6 +5,7 @@ const ACTIVE_GROUP_KEY = "stock-dashboard-active-group";
 const PORTFOLIO_MODE_KEY = "stock-dashboard-portfolio-mode";
 const REAL_POSITIONS_KEY = "stock-dashboard-real-positions";
 const REAL_WATCHLIST_KEY = "stock-dashboard-real-watchlist";
+const REAL_TRANSACTIONS_KEY = "stock-dashboard-real-transactions";
 const REAL_ACTIVE_TAB_KEY = "stock-dashboard-real-active-tab";
 const CASH_KEY = "stock-dashboard-paper-cash";
 const REALIZED_PNL_KEY = "stock-dashboard-realized-pnl";
@@ -17,6 +18,7 @@ const state = {
   portfolioMode: localStorage.getItem(PORTFOLIO_MODE_KEY) === "real" ? "real" : "paper",
   realPositions: loadRealPositions(),
   realWatchlist: loadRealWatchlist(),
+  realTransactions: loadRealTransactions(),
   activeRealTab: localStorage.getItem(REAL_ACTIVE_TAB_KEY) === "watchlist" ? "watchlist" : "owned",
   quotes: new Map(),
   cash: loadAccountCash(),
@@ -49,6 +51,7 @@ const state = {
   session: null,
   paperApiKeysEnabled: false,
   realPositionsCloudEnabled: false,
+  realTransactionsCloudEnabled: false,
   cloudReady: false,
   cloudSaving: false,
   cloudSaveQueued: false,
@@ -96,6 +99,7 @@ const elements = {
   apiKeyList: document.querySelector("#api-key-list"),
   apiKeyMessage: document.querySelector("#api-key-message"),
   portfolioSummary: document.querySelector("#portfolio-summary"),
+  realTransactionHistory: document.querySelector("#real-transaction-history"),
   comparisonPeriodLabel: document.querySelector("#comparison-period-label"),
   comparisonControls: document.querySelector("#comparison-controls"),
   comparisonAmount: document.querySelector("#comparison-amount"),
@@ -222,6 +226,37 @@ function loadRealWatchlist() {
   try {
     const saved = JSON.parse(localStorage.getItem(REAL_WATCHLIST_KEY));
     return Array.isArray(saved) ? [...new Set(saved.map(cleanSymbol).filter(Boolean))] : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeRealTransaction(transaction) {
+  const symbol = cleanSymbol(transaction?.symbol);
+  const type = String(transaction?.type || "").toLowerCase();
+  const shares = Math.max(0, Number(transaction?.shares) || 0);
+  const price = Math.max(0, Number(transaction?.price) || 0);
+  const avgCost = Math.max(0, Number(transaction?.avgCost) || 0);
+  const total = Number(transaction?.total) || shares * price || shares * avgCost || 0;
+  const createdAt = Number(transaction?.createdAt) || Date.now();
+  if (!symbol || !["set", "buy", "sell"].includes(type)) return null;
+  return {
+    id: String(transaction?.id || `${createdAt}-${symbol}-${type}-${Math.random().toString(36).slice(2)}`),
+    symbol,
+    type,
+    shares,
+    price,
+    avgCost,
+    total,
+    createdAt,
+    source: String(transaction?.source || "")
+  };
+}
+
+function loadRealTransactions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REAL_TRANSACTIONS_KEY));
+    return Array.isArray(saved) ? saved.map(normalizeRealTransaction).filter(Boolean).slice(0, 200) : [];
   } catch {
     return [];
   }
@@ -397,6 +432,7 @@ function saveGroups() {
   localStorage.setItem(PORTFOLIO_MODE_KEY, state.portfolioMode);
   localStorage.setItem(REAL_POSITIONS_KEY, JSON.stringify(state.realPositions));
   localStorage.setItem(REAL_WATCHLIST_KEY, JSON.stringify(state.realWatchlist));
+  localStorage.setItem(REAL_TRANSACTIONS_KEY, JSON.stringify(state.realTransactions));
   localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
   localStorage.setItem(GROUPS_KEY, JSON.stringify(state.groups));
   localStorage.setItem(ACTIVE_GROUP_KEY, state.activeGroupId);
@@ -404,6 +440,16 @@ function saveGroups() {
   localStorage.setItem(CASH_KEY, String(state.cash));
   localStorage.setItem(REALIZED_PNL_KEY, String(state.realizedPnl));
   queueCloudSave();
+}
+
+function recordRealTransaction(transaction) {
+  const normalized = normalizeRealTransaction({
+    ...transaction,
+    id: `${Date.now()}-${cleanSymbol(transaction.symbol)}-${transaction.type}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: Date.now()
+  });
+  if (!normalized) return;
+  state.realTransactions = [normalized, ...(state.realTransactions || [])].slice(0, 200);
 }
 
 function positionFor(symbol) {
@@ -889,8 +935,36 @@ async function loadCloudRealPositions(userId) {
     state.realWatchlist = [
       ...new Set((watchlistData || []).map((item) => cleanSymbol(item.symbol)).filter(Boolean))
     ];
+    try {
+      const { data: transactionData, error: transactionError } = await state.supabase
+        .from("real_transactions")
+        .select("id, symbol, type, shares, price, avg_cost, total, source, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (transactionError) throw transactionError;
+      state.realTransactionsCloudEnabled = true;
+      state.realTransactions = (transactionData || [])
+        .map((transaction) =>
+          normalizeRealTransaction({
+            id: transaction.id,
+            symbol: transaction.symbol,
+            type: transaction.type,
+            shares: transaction.shares,
+            price: transaction.price,
+            avgCost: transaction.avg_cost,
+            total: transaction.total,
+            source: transaction.source,
+            createdAt: transaction.created_at ? new Date(transaction.created_at).getTime() : Date.now()
+          })
+        )
+        .filter(Boolean);
+    } catch {
+      state.realTransactionsCloudEnabled = false;
+    }
   } catch {
     state.realPositionsCloudEnabled = false;
+    state.realTransactionsCloudEnabled = false;
   }
 }
 
@@ -899,6 +973,7 @@ async function loadCloudData() {
   const userId = state.session.user.id;
   const localRealPositions = { ...state.realPositions };
   const localRealWatchlist = [...(state.realWatchlist || [])];
+  const localRealTransactions = [...(state.realTransactions || [])];
   const localGroups = state.groups.map((group) => ({
     ...group,
     symbols: [...(group.symbols || [])],
@@ -920,6 +995,15 @@ async function loadCloudData() {
 
   if (accountError) throw accountError;
   await loadCloudRealPositions(userId);
+  if (state.realTransactionsCloudEnabled && localRealTransactions.length) {
+    const cloudIds = new Set((state.realTransactions || []).map((transaction) => transaction.id));
+    state.realTransactions = [
+      ...(state.realTransactions || []),
+      ...localRealTransactions.filter((transaction) => !cloudIds.has(transaction.id))
+    ]
+      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
+      .slice(0, 200);
+  }
   let mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist);
 
   if (!account) {
@@ -1135,6 +1219,26 @@ async function saveCloudData({ force = false } = {}) {
       .map((symbol, index) => ({ user_id: userId, symbol, sort_order: index }));
     if (realWatchlist.length) {
       await saveResult(state.supabase.from("real_watchlist").insert(realWatchlist));
+    }
+    if (state.realTransactionsCloudEnabled) {
+      await saveResult(state.supabase.from("real_transactions").delete().eq("user_id", userId));
+      const realTransactions = (state.realTransactions || [])
+        .map((transaction) => ({
+          id: transaction.id,
+          user_id: userId,
+          symbol: cleanSymbol(transaction.symbol),
+          type: transaction.type,
+          shares: Number(transaction.shares) || 0,
+          price: Number(transaction.price) || 0,
+          avg_cost: Number(transaction.avgCost) || 0,
+          total: Number(transaction.total) || 0,
+          source: transaction.source || null,
+          created_at: new Date(transaction.createdAt || Date.now()).toISOString()
+        }))
+        .filter((transaction) => transaction.symbol && ["set", "buy", "sell"].includes(transaction.type));
+      if (realTransactions.length) {
+        await saveResult(state.supabase.from("real_transactions").insert(realTransactions));
+      }
     }
   }
 
@@ -1831,6 +1935,50 @@ function renderPortfolioSummary() {
       <span>P/L</span>
       <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
     </div>
+  `;
+  renderRealTransactionHistory();
+}
+
+function renderRealTransactionHistory() {
+  if (!elements.realTransactionHistory) return;
+  elements.realTransactionHistory.hidden = !isRealMode();
+  if (!isRealMode()) {
+    elements.realTransactionHistory.innerHTML = "";
+    return;
+  }
+
+  const transactions = (state.realTransactions || []).slice(0, 8);
+  elements.realTransactionHistory.innerHTML = `
+    <div class="history-head">
+      <span>Recent real trades</span>
+      <button type="button" data-action="clear-real-history" ${transactions.length ? "" : "disabled"}>Clear</button>
+    </div>
+    ${
+      transactions.length
+        ? `<div class="history-list">
+            ${transactions
+              .map((transaction) => {
+                const typeLabel =
+                  transaction.type === "set" ? "Set position" : transaction.type === "buy" ? "Buy" : "Sell";
+                const priceLabel = transaction.type === "set" ? money(transaction.avgCost) : money(transaction.price);
+                const totalLabel = money(transaction.total);
+                return `
+                  <div class="history-row">
+                    <div>
+                      <strong>${escapeHtml(transaction.symbol)}</strong>
+                      <span>${escapeHtml(typeLabel)} | ${new Date(transaction.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <strong>${Number(transaction.shares).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong>
+                      <span>${priceLabel} | ${totalLabel}</span>
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>`
+        : `<div class="empty-state mini">No real portfolio trades recorded yet.</div>`
+    }
   `;
 }
 
@@ -2615,6 +2763,14 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
     avgCost: positionAvgCost,
     openedAt: existing.openedAt || Date.now()
   };
+  recordRealTransaction({
+    type: "set",
+    symbol: resolvedSymbol,
+    shares: positionShares,
+    avgCost: positionAvgCost,
+    total: positionShares * positionAvgCost,
+    source: "manual"
+  });
   state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
   state.quotes.set(resolvedSymbol, quote);
   state.selected = resolvedSymbol;
@@ -2641,6 +2797,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
   const resolvedSymbol = cleanSymbol(quote?.symbol || cleaned);
   const livePrice = Number(quote?.regularMarketPrice);
   const enteredPrice = Number(tradePrice);
+  const usingEnteredPrice = Number.isFinite(enteredPrice) && enteredPrice > 0;
   const price = Math.max(0, Number.isFinite(enteredPrice) && enteredPrice > 0 ? enteredPrice : livePrice);
   if (!price) {
     elements.marketStatus.textContent = `Live price is not available for ${resolvedSymbol}`;
@@ -2660,6 +2817,14 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
       avgCost: Number(position.avgCost.toFixed(4)),
       openedAt: position.openedAt
     };
+    recordRealTransaction({
+      type: "buy",
+      symbol: resolvedSymbol,
+      shares: qty,
+      price,
+      total: qty * price,
+      source: usingEnteredPrice ? "entered" : "live"
+    });
     state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
     state.activeRealTab = "owned";
     localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
@@ -2681,6 +2846,14 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
         openedAt: position.openedAt || Date.now()
       };
     }
+    recordRealTransaction({
+      type: "sell",
+      symbol: resolvedSymbol,
+      shares: qty,
+      price,
+      total: qty * price,
+      source: usingEnteredPrice ? "entered" : "live"
+    });
     elements.marketStatus.textContent = `Sold ${qty} real ${resolvedSymbol} at ${moneyAxis(price)}`;
   }
 
@@ -3139,8 +3312,17 @@ elements.apiKeyList.addEventListener("click", async (event) => {
 elements.toggleDetails.addEventListener("click", () => setDetailsPanelVisibility(!state.showDetailsPanel));
 
 elements.watchlist.addEventListener("click", (event) => {
+  const clearHistoryButton = event.target.closest("[data-action='clear-real-history']");
+  if (clearHistoryButton) {
+    state.realTransactions = [];
+    saveGroups();
+    renderPortfolioSummary();
+    elements.marketStatus.textContent = "Real transaction history cleared";
+    return;
+  }
+
   const keepSelection = event.target.closest(
-    ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary, .stock-search"
+    ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary, .real-transaction-history, .stock-search"
   );
   if (!keepSelection) {
     clearSelectedCard();
