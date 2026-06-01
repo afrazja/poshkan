@@ -2055,3 +2055,60 @@ h2 {
     text-align: left;
   }
 }
+
+@media (max-width: 520px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .watchlist,
+  .details,
+  .comparison-page {
+    padding: 14px;
+  }
+
+  .portfolio-mode,
+  .panel-actions {
+    flex-wrap: wrap;
+  }
+
+  .panel-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .stock-card {
+    grid-template-columns: minmax(0, 1fr) 28px;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .stock-card .quote-meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 44px;
+    text-align: left;
+  }
+
+  .stock-card .quantity-label {
+    right: 46px;
+  }
+
+  .position-editor,
+  .trade-editor,
+  .alert-editor,
+  .selected-position,
+  .real-position-form,
+  .real-editor-section,
+  .real-editor-section:first-child {
+    grid-template-columns: 1fr;
+  }
+
+  .real-editor-section > strong {
+    grid-column: auto;
+  }
+
+  .comparison-page {
+    padding: 14px 10px;
+  }
+}
