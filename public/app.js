@@ -86,6 +86,7 @@ const elements = {
   portfolioModeButtons: document.querySelectorAll("[data-portfolio-mode]"),
   mobileNavButtons: document.querySelectorAll("[data-mobile-nav]"),
   mobileAlertCount: document.querySelector("#mobile-alert-count"),
+  portfolioHealth: document.querySelector("#portfolio-health"),
   input: document.querySelector("#stock-symbol"),
   addStockMessage: document.querySelector("#add-stock-message"),
   groupTabs: document.querySelector("#group-tabs"),
@@ -503,6 +504,67 @@ function portfolioTotals(symbols = currentSymbols()) {
   );
   const cash = isRealMode() ? 0 : state.cash;
   return { ...holdings, cash, equity: holdings.value + cash };
+}
+
+function healthRows() {
+  const rows = isRealMode()
+    ? Object.keys(state.realPositions).map((symbol) => {
+        const quote = state.quotes.get(symbol);
+        const stats = positionStats(symbol);
+        return {
+          symbol,
+          name: quote?.shortName || symbol,
+          price: quote?.regularMarketPrice,
+          dayChange: quote?.regularMarketChangePercent,
+          shares: stats.shares,
+          value: stats.value,
+          pnl: stats.pnl,
+          pnlPercent: stats.pnlPercent
+        };
+      })
+    : state.groups.flatMap((group) =>
+        Object.entries(group.portfolio || {}).map(([rawSymbol, position]) => {
+          const symbol = cleanSymbol(rawSymbol);
+          const quote = state.quotes.get(symbol);
+          const shares = Number(position?.shares) || 0;
+          const avgCost = Number(position?.avgCost) || 0;
+          const price = Number(quote?.regularMarketPrice);
+          const value = Number.isFinite(price) ? shares * price : 0;
+          const cost = shares * avgCost;
+          const pnl = value - cost;
+          return {
+            symbol,
+            name: quote?.shortName || symbol,
+            price,
+            dayChange: quote?.regularMarketChangePercent,
+            shares,
+            value,
+            pnl,
+            pnlPercent: cost > 0 ? (pnl / cost) * 100 : 0
+          };
+        })
+      );
+
+  return rows.filter((row) => row.symbol && row.shares > 0 && row.value > 0);
+}
+
+function portfolioHealth() {
+  const rows = healthRows();
+  const totals = isRealMode() ? portfolioTotals(Object.keys(state.realPositions)) : accountTotals();
+  const holdings = isRealMode() ? totals.value : totals.holdings;
+  const equity = isRealMode() ? holdings : totals.equity;
+  const best = rows.reduce((winner, row) => (!winner || row.pnlPercent > winner.pnlPercent ? row : winner), null);
+  const worst = rows.reduce((loser, row) => (!loser || row.pnlPercent < loser.pnlPercent ? row : loser), null);
+  const largest = rows.reduce((leader, row) => (!leader || row.value > leader.value ? row : leader), null);
+  const concentration = holdings > 0 && largest ? (largest.value / holdings) * 100 : 0;
+  const dayWeightedValue = rows.reduce((sum, row) => {
+    const change = Number(row.dayChange);
+    return Number.isFinite(change) ? sum + row.value * (change / 100) : sum;
+  }, 0);
+  const dayChangePercent = holdings > 0 ? (dayWeightedValue / holdings) * 100 : 0;
+  const cashRatio = !isRealMode() && equity > 0 ? (state.cash / equity) * 100 : null;
+
+  return { rows, best, worst, largest, concentration, dayWeightedValue, dayChangePercent, cashRatio, holdings, equity };
 }
 
 function accountTotals() {
@@ -1960,6 +2022,55 @@ function renderPortfolioSummary() {
   renderRealTransactionHistory();
 }
 
+function renderPortfolioHealth() {
+  if (!elements.portfolioHealth) return;
+  const health = portfolioHealth();
+  const dayClass = health.dayWeightedValue >= 0 ? "up" : "down";
+  const concentrationClass = health.concentration >= 35 ? "down" : health.concentration >= 20 ? "warn" : "up";
+  const cashLabel =
+    health.cashRatio === null
+      ? `${health.rows.length} owned`
+      : `${Number(health.cashRatio).toFixed(1)}% cash`;
+
+  if (!health.rows.length) {
+    elements.portfolioHealth.innerHTML = `
+      <div class="health-card wide">
+        <span>Portfolio health</span>
+        <strong>Add owned shares to unlock health signals.</strong>
+      </div>
+    `;
+    return;
+  }
+
+  elements.portfolioHealth.innerHTML = `
+    <div class="health-card">
+      <span>Biggest winner</span>
+      <strong class="${health.best?.pnl >= 0 ? "up" : "down"}">${escapeHtml(health.best?.symbol || "--")}</strong>
+      <small>${signedMoney(health.best?.pnl)} (${signed(health.best?.pnlPercent, "%")})</small>
+    </div>
+    <div class="health-card">
+      <span>Biggest loser</span>
+      <strong class="${health.worst?.pnl >= 0 ? "up" : "down"}">${escapeHtml(health.worst?.symbol || "--")}</strong>
+      <small>${signedMoney(health.worst?.pnl)} (${signed(health.worst?.pnlPercent, "%")})</small>
+    </div>
+    <div class="health-card">
+      <span>Today estimate</span>
+      <strong class="${dayClass}">${signedMoney(health.dayWeightedValue)}</strong>
+      <small>${signed(health.dayChangePercent, "%")} weighted move</small>
+    </div>
+    <div class="health-card">
+      <span>Largest position</span>
+      <strong class="${concentrationClass}">${escapeHtml(health.largest?.symbol || "--")}</strong>
+      <small>${signed(health.concentration, "%").replace("+", "")} of holdings</small>
+    </div>
+    <div class="health-card">
+      <span>${isRealMode() ? "Real exposure" : "Cash balance"}</span>
+      <strong>${escapeHtml(cashLabel)}</strong>
+      <small>${money(health.holdings)} invested</small>
+    </div>
+  `;
+}
+
 function renderRealTransactionHistory() {
   if (!elements.realTransactionHistory) return;
   elements.realTransactionHistory.hidden = !isRealMode();
@@ -2197,6 +2308,7 @@ function renderWatchlist() {
   renderGroups();
   renderAccountSummary();
   renderPortfolioSummary();
+  renderPortfolioHealth();
   renderComparisonTable();
   if (elements.stockSearch.value !== state.stockSearch) {
     elements.stockSearch.value = state.stockSearch;

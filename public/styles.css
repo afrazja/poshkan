@@ -486,6 +486,52 @@ button {
   font-size: 1.05rem;
 }
 
+.portfolio-health {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: -4px 0 14px;
+}
+
+.health-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(98, 200, 221, 0.08), transparent 46%),
+    rgba(24, 28, 32, 0.82);
+  padding: 12px 14px;
+}
+
+.health-card.wide {
+  grid-column: 1 / -1;
+}
+
+.health-card span,
+.health-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.health-card strong {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-card small {
+  margin-top: 4px;
+}
+
+.health-card strong.warn {
+  color: var(--gold);
+}
+
 .api-key-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2033,6 +2079,7 @@ h2 {
 
   .topbar,
   .account-summary,
+  .portfolio-health,
   .auth-panel,
   .workspace,
   .comparison-page-head,
@@ -2057,6 +2104,10 @@ h2 {
 
   .account-summary {
     grid-template-columns: 1fr;
+  }
+
+  .portfolio-health {
+    grid-template-columns: 1fr 1fr;
   }
 
   .api-key-panel,
@@ -2238,6 +2289,7 @@ h2 {
   .trade-editor,
   .alert-editor,
   .selected-position,
+  .portfolio-health,
   .real-position-form,
   .real-editor-section,
   .real-editor-section:first-child {
