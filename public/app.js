@@ -35,6 +35,7 @@ const state = {
   comparisonSortDirection: localStorage.getItem("stock-dashboard-comparison-sort-direction") === "asc" ? "asc" : "desc",
   comparisonLoading: false,
   comparisonPageOpen: false,
+  stockSearch: "",
   performance: new Map(),
   chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
   showMA: localStorage.getItem("stock-dashboard-show-ma") !== "false",
@@ -102,6 +103,7 @@ const elements = {
   comparisonSort: document.querySelector("#comparison-sort"),
   comparisonRefresh: document.querySelector("#refresh-comparison"),
   comparisonTable: document.querySelector("#comparison-table"),
+  stockSearch: document.querySelector("#stock-search"),
   stockList: document.querySelector("#stock-list"),
   refresh: document.querySelector("#refresh-now"),
   alertTray: document.querySelector("#alert-tray"),
@@ -338,6 +340,25 @@ function currentSymbols() {
     return isRealOwnedTab() ? Object.keys(state.realPositions) : state.realWatchlist;
   }
   return activeGroup()?.symbols || [];
+}
+
+function visibleStockSymbols(symbols) {
+  const query = state.stockSearch.trim().toLowerCase();
+  if (!query) return symbols;
+
+  return symbols.filter((symbol) => {
+    const quote = state.quotes.get(symbol);
+    return (
+      symbol.toLowerCase().includes(query) ||
+      (quote?.shortName || "").toLowerCase().includes(query) ||
+      (quote?.longName || "").toLowerCase().includes(query)
+    );
+  });
+}
+
+function clearStockSearch() {
+  state.stockSearch = "";
+  if (elements.stockSearch) elements.stockSearch.value = "";
 }
 
 function ensurePositionSymbolsVisible() {
@@ -1886,6 +1907,7 @@ function renderPortfolioMode() {
     : isRealWatchlistTab()
       ? "Add stock to real watch list"
     : "Add stock to selected group";
+  elements.stockSearch.placeholder = isRealMode() ? "Search real stocks" : "Search group stocks";
 }
 
 function comparisonRows() {
@@ -2001,10 +2023,14 @@ async function refreshNews(symbol) {
 function renderWatchlist() {
   const group = activeGroup();
   const symbols = currentSymbols();
+  const visibleSymbols = visibleStockSymbols(symbols);
   renderGroups();
   renderAccountSummary();
   renderPortfolioSummary();
   renderComparisonTable();
+  if (elements.stockSearch.value !== state.stockSearch) {
+    elements.stockSearch.value = state.stockSearch;
+  }
 
   if (!symbols.length) {
     elements.stockList.innerHTML = `<div class="empty-state">${
@@ -2017,7 +2043,12 @@ function renderWatchlist() {
     return;
   }
 
-  elements.stockList.innerHTML = symbols
+  if (!visibleSymbols.length) {
+    elements.stockList.innerHTML = `<div class="empty-state">No stocks match "${escapeHtml(state.stockSearch.trim())}".</div>`;
+    return;
+  }
+
+  elements.stockList.innerHTML = visibleSymbols
     .map((symbol) => {
       const quote = state.quotes.get(symbol);
       const change = quote?.regularMarketChange;
@@ -2654,6 +2685,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
 
 function setPortfolioMode(mode) {
   state.portfolioMode = mode === "real" ? "real" : "paper";
+  clearStockSearch();
   state.selected = currentSymbols()[0] || null;
   state.performance.clear();
   saveGroups();
@@ -2668,6 +2700,7 @@ function setPortfolioMode(mode) {
 
 function setRealTab(tab) {
   state.activeRealTab = tab === "watchlist" ? "watchlist" : "owned";
+  clearStockSearch();
   state.selected = currentSymbols()[0] || null;
   state.performance.clear();
   saveGroups();
@@ -2878,6 +2911,7 @@ elements.groupTabs.addEventListener("click", async (event) => {
     state.activeGroupId = state.groups[0].id;
     state.creatingGroup = false;
     state.renamingGroupId = null;
+    clearStockSearch();
     state.selected = currentSymbols()[0] || null;
     saveGroups();
     renderWatchlist();
@@ -2894,6 +2928,7 @@ elements.groupTabs.addEventListener("click", async (event) => {
   state.activeGroupId = button.dataset.groupId;
   state.creatingGroup = false;
   state.renamingGroupId = null;
+  clearStockSearch();
   state.selected = currentSymbols()[0] || null;
   saveGroups();
   renderWatchlist();
@@ -2953,6 +2988,7 @@ elements.groupTabs.addEventListener("submit", async (event) => {
   state.activeGroupId = id;
   state.creatingGroup = false;
   state.renamingGroupId = null;
+  clearStockSearch();
   state.selected = null;
   saveGroups();
   renderWatchlist();
@@ -3085,11 +3121,16 @@ elements.toggleDetails.addEventListener("click", () => setDetailsPanelVisibility
 
 elements.watchlist.addEventListener("click", (event) => {
   const keepSelection = event.target.closest(
-    ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary"
+    ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary, .stock-search"
   );
   if (!keepSelection) {
     clearSelectedCard();
   }
+});
+
+elements.stockSearch.addEventListener("input", () => {
+  state.stockSearch = elements.stockSearch.value;
+  renderWatchlist();
 });
 
 elements.alertTray.addEventListener("click", (event) => {
