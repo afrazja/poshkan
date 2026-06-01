@@ -6,6 +6,7 @@ const PORTFOLIO_MODE_KEY = "stock-dashboard-portfolio-mode";
 const REAL_POSITIONS_KEY = "stock-dashboard-real-positions";
 const REAL_WATCHLIST_KEY = "stock-dashboard-real-watchlist";
 const REAL_TRANSACTIONS_KEY = "stock-dashboard-real-transactions";
+const REAL_REMOVED_SYMBOLS_KEY = "stock-dashboard-real-removed-symbols";
 const REAL_ACTIVE_TAB_KEY = "stock-dashboard-real-active-tab";
 const CASH_KEY = "stock-dashboard-paper-cash";
 const REALIZED_PNL_KEY = "stock-dashboard-realized-pnl";
@@ -19,6 +20,7 @@ const state = {
   realPositions: loadRealPositions(),
   realWatchlist: loadRealWatchlist(),
   realTransactions: loadRealTransactions(),
+  removedRealSymbols: loadRemovedRealSymbols(),
   activeRealTab: localStorage.getItem(REAL_ACTIVE_TAB_KEY) === "watchlist" ? "watchlist" : "owned",
   quotes: new Map(),
   cash: loadAccountCash(),
@@ -265,6 +267,15 @@ function loadRealTransactions() {
   }
 }
 
+function loadRemovedRealSymbols() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REAL_REMOVED_SYMBOLS_KEY));
+    return new Set(Array.isArray(saved) ? saved.map(cleanSymbol).filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
 function isRealMode() {
   return state.portfolioMode === "real";
 }
@@ -286,6 +297,10 @@ function mergeLocalRealPortfolio(localPositions = {}, localWatchlist = []) {
   const cloudPositions = state.realPositions || {};
 
   Object.entries(normalizePortfolio(localPositions)).forEach(([symbol, position]) => {
+    if (state.removedRealSymbols.has(symbol)) {
+      changed = true;
+      return;
+    }
     if (!cloudPositions[symbol] && Number(position.shares) > 0) {
       cloudPositions[symbol] = position;
       changed = true;
@@ -298,7 +313,7 @@ function mergeLocalRealPortfolio(localPositions = {}, localWatchlist = []) {
   const ownedSymbols = new Set(Object.keys(cloudPositions));
   const previousWatchlist = (state.realWatchlist || []).join("|");
   const watchlist = [...new Set([...(state.realWatchlist || []), ...(localWatchlist || [])].map(cleanSymbol).filter(Boolean))]
-    .filter((symbol) => !ownedSymbols.has(symbol));
+    .filter((symbol) => !ownedSymbols.has(symbol) && !state.removedRealSymbols.has(symbol));
   if (watchlist.join("|") !== previousWatchlist) {
     changed = true;
   }
@@ -436,6 +451,7 @@ function saveGroups() {
   localStorage.setItem(REAL_POSITIONS_KEY, JSON.stringify(state.realPositions));
   localStorage.setItem(REAL_WATCHLIST_KEY, JSON.stringify(state.realWatchlist));
   localStorage.setItem(REAL_TRANSACTIONS_KEY, JSON.stringify(state.realTransactions));
+  localStorage.setItem(REAL_REMOVED_SYMBOLS_KEY, JSON.stringify([...state.removedRealSymbols]));
   localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
   localStorage.setItem(GROUPS_KEY, JSON.stringify(state.groups));
   localStorage.setItem(ACTIVE_GROUP_KEY, state.activeGroupId);
@@ -992,15 +1008,17 @@ async function loadCloudRealPositions(userId) {
     state.realPositionsCloudEnabled = true;
     state.realPositions = normalizePortfolio(
       Object.fromEntries(
-        (data || []).map((position) => [
-          cleanSymbol(position.symbol),
-          { shares: Number(position.shares) || 0, avgCost: Number(position.avg_cost) || 0 }
-        ])
+        (data || [])
+          .map((position) => [
+            cleanSymbol(position.symbol),
+            { shares: Number(position.shares) || 0, avgCost: Number(position.avg_cost) || 0 }
+          ])
+          .filter(([symbol]) => !state.removedRealSymbols.has(symbol))
       )
     );
     state.realWatchlist = [
       ...new Set((watchlistData || []).map((item) => cleanSymbol(item.symbol)).filter(Boolean))
-    ];
+    ].filter((symbol) => !state.removedRealSymbols.has(symbol));
     try {
       const { data: transactionData, error: transactionError } = await state.supabase
         .from("real_transactions")
@@ -2910,6 +2928,7 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
 
   const resolvedSymbol = cleanSymbol(quote.symbol);
   const existing = state.realPositions[resolvedSymbol] || {};
+  state.removedRealSymbols.delete(resolvedSymbol);
   state.realPositions[resolvedSymbol] = {
     shares: positionShares,
     avgCost: positionAvgCost,
@@ -2959,6 +2978,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
   const position = state.realPositions[resolvedSymbol] || { shares: 0, avgCost: 0, openedAt: null };
 
   if (action === "buy") {
+    state.removedRealSymbols.delete(resolvedSymbol);
     const existingCost = Number(position.shares) * Number(position.avgCost);
     const addedCost = qty * price;
     position.shares = Math.max(0, Number(position.shares) || 0) + qty;
@@ -3072,6 +3092,7 @@ async function addRealWatchlistSymbol(symbol) {
 
   const resolvedSymbol = cleanSymbol(quote.symbol);
   if (!state.realWatchlist.includes(resolvedSymbol) && !state.realPositions[resolvedSymbol]) {
+    state.removedRealSymbols.delete(resolvedSymbol);
     state.realWatchlist = [resolvedSymbol, ...state.realWatchlist];
   }
   state.quotes.set(resolvedSymbol, quote);
@@ -3561,8 +3582,10 @@ elements.stockList.addEventListener("click", async (event) => {
   if (button.dataset.action === "remove") {
     if (isRealMode()) {
       if (isRealOwnedTab()) {
+        state.removedRealSymbols.add(symbol);
         delete state.realPositions[symbol];
       } else {
+        state.removedRealSymbols.add(symbol);
         state.realWatchlist = state.realWatchlist.filter((item) => item !== symbol);
       }
       state.quotes.delete(symbol);
@@ -3571,6 +3594,7 @@ elements.stockList.addEventListener("click", async (event) => {
       renderWatchlist();
       renderSelectedQuote();
       if (state.selected) await selectStock(state.selected);
+      if (state.cloudReady) await saveCloudData({ force: true });
       return;
     }
     const group = activeGroup();
