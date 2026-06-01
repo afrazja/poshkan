@@ -631,7 +631,7 @@ h2 {
 
 .real-position-form {
   display: grid;
-  grid-template-columns: minmax(70px, 1fr) 76px 86px 44px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   align-items: end;
 }
@@ -639,6 +639,10 @@ h2 {
 .real-position-form label {
   display: grid;
   gap: 5px;
+}
+
+.real-position-form label:first-child {
+  grid-column: 1 / -1;
 }
 
 .real-position-form span {
@@ -670,6 +674,11 @@ h2 {
   height: 42px;
   font-size: 0.8rem;
   font-weight: 850;
+}
+
+.real-position-form button[value="buy-live"] {
+  border-color: rgba(68, 208, 123, 0.38);
+  color: var(--green);
 }
 
 .add-stock-message {
@@ -2011,10 +2020,6 @@ h2 {
 
   .custom-period {
     grid-template-columns: 72px minmax(92px, 1fr) 72px;
-  }
-
-  .real-position-form {
-    grid-template-columns: 1fr 1fr;
   }
 
   .comparison-controls {

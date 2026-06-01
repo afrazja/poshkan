@@ -2629,15 +2629,24 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
 async function executeRealTrade(symbol, action, quantity, tradePrice) {
   const cleaned = cleanSymbol(symbol);
   const qty = Math.max(0, Number(quantity) || 0);
-  const price = Math.max(0, Number(tradePrice) || 0);
 
-  if (!cleaned || !qty || !price) {
-    elements.marketStatus.textContent = "Enter real shares and trade price";
+  if (!cleaned || !qty) {
+    elements.marketStatus.textContent = "Enter real stock symbol and share count";
     return;
   }
 
   const quote = state.quotes.get(cleaned) || (await lookupStockBeforeAdd(cleaned));
+  if (!quote) return;
+
   const resolvedSymbol = cleanSymbol(quote?.symbol || cleaned);
+  const livePrice = Number(quote?.regularMarketPrice);
+  const enteredPrice = Number(tradePrice);
+  const price = Math.max(0, Number.isFinite(enteredPrice) && enteredPrice > 0 ? enteredPrice : livePrice);
+  if (!price) {
+    elements.marketStatus.textContent = `Live price is not available for ${resolvedSymbol}`;
+    return;
+  }
+
   const position = state.realPositions[resolvedSymbol] || { shares: 0, avgCost: 0, openedAt: null };
 
   if (action === "buy") {
@@ -2653,6 +2662,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
     };
     state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
     state.activeRealTab = "owned";
+    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
     elements.marketStatus.textContent = `Bought ${qty} real ${resolvedSymbol} at ${moneyAxis(price)}`;
   } else {
     const currentShares = Number(position.shares) || 0;
@@ -2680,6 +2690,10 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
   saveGroups();
   renderWatchlist();
   renderSelectedQuote();
+  setAddStockMessage(
+    `${action === "buy" ? "Bought" : "Sold"} ${qty} ${resolvedSymbol} at ${moneyAxis(price)}.`,
+    "success"
+  );
   refreshPerformance({ quiet: true });
 }
 
@@ -2787,11 +2801,16 @@ elements.form.addEventListener("submit", async (event) => {
 
 elements.realPositionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await addOrUpdateRealPosition(
-    elements.realSymbol.value,
-    elements.realShares.value,
-    elements.realAvgCost.value
-  );
+  const action = event.submitter?.value || "set";
+  if (action === "buy-live") {
+    await executeRealTrade(elements.realSymbol.value, "buy", elements.realShares.value);
+  } else {
+    await addOrUpdateRealPosition(
+      elements.realSymbol.value,
+      elements.realShares.value,
+      elements.realAvgCost.value
+    );
+  }
   elements.realSymbol.value = "";
   elements.realShares.value = "";
   elements.realAvgCost.value = "";
