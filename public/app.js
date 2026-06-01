@@ -2090,27 +2090,33 @@ function renderWatchlist() {
                     `
                     : `
                 <div class="real-editor">
-                  <label>
-                    <span>Set shares</span>
-                    <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
-                  </label>
-                  <label>
-                    <span>Set avg cost</span>
-                    <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
-                  </label>
-                  <button type="button" data-real-action="save" data-symbol="${symbol}">Set</button>
-                  <label>
-                    <span>Real trade</span>
-                    <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
-                  </label>
-                  <label>
-                    <span>Trade price</span>
-                    <input type="number" min="0" step="0.01" inputmode="decimal" data-real-trade-price data-symbol="${symbol}" value="${
-                      Number.isFinite(quote?.regularMarketPrice) ? Number(quote.regularMarketPrice).toFixed(2) : ""
-                    }" placeholder="Price" />
-                  </label>
-                  <button type="button" data-real-trade-action="buy" data-symbol="${symbol}">Buy</button>
-                  <button type="button" data-real-trade-action="sell" data-symbol="${symbol}">Sell</button>
+                  <div class="real-editor-section">
+                    <strong>Current position</strong>
+                    <label>
+                      <span>Shares</span>
+                      <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
+                    </label>
+                    <label>
+                      <span>Average cost</span>
+                      <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
+                    </label>
+                    <button type="button" data-real-action="save" data-symbol="${symbol}">Set</button>
+                  </div>
+                  <div class="real-editor-section">
+                    <strong>Real trade</strong>
+                    <label>
+                      <span>Shares</span>
+                      <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
+                    </label>
+                    <label>
+                      <span>Price</span>
+                      <input type="number" min="0" step="0.01" inputmode="decimal" data-real-trade-price data-symbol="${symbol}" value="${
+                        Number.isFinite(quote?.regularMarketPrice) ? Number(quote.regularMarketPrice).toFixed(2) : ""
+                      }" placeholder="Price" />
+                    </label>
+                    <button type="button" data-real-trade-action="buy" data-symbol="${symbol}">Buy</button>
+                    <button type="button" data-real-trade-action="sell" data-symbol="${symbol}">Sell</button>
+                  </div>
                 </div>
                     `
                 }
