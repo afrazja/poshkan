@@ -2091,6 +2091,15 @@ function renderWatchlist() {
                     : `
                 <div class="real-editor">
                   <label>
+                    <span>Set shares</span>
+                    <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
+                  </label>
+                  <label>
+                    <span>Set avg cost</span>
+                    <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
+                  </label>
+                  <button type="button" data-real-action="save" data-symbol="${symbol}">Set</button>
+                  <label>
                     <span>Real trade</span>
                     <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
                   </label>

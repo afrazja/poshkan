@@ -1234,7 +1234,7 @@ h2 {
 }
 
 .real-editor {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 68px 68px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 58px minmax(0, 1fr) minmax(0, 1fr) 68px 68px;
 }
 
 .alert-editor {
@@ -1335,6 +1335,10 @@ h2 {
 .real-editor button {
   border-color: rgba(98, 200, 221, 0.34);
   color: var(--cyan);
+}
+
+.real-editor button[data-real-action="save"] {
+  color: var(--text);
 }
 
 .real-editor button[data-real-trade-action="buy"] {
