@@ -43,6 +43,22 @@ button {
   cursor: pointer;
 }
 
+button,
+a,
+input,
+select {
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
 .shell {
   width: min(1440px, 100%);
   margin: 0 auto;
@@ -106,10 +122,17 @@ button {
   font-weight: 900;
 }
 
+.app-nav button:hover {
+  border-color: rgba(var(--mode-accent-rgb), 0.26);
+  background: rgba(var(--mode-accent-rgb), 0.08);
+  color: var(--text);
+}
+
 .app-nav button.active {
   border-color: rgba(var(--mode-accent-rgb), 0.42);
   background: rgba(var(--mode-accent-rgb), 0.13);
   color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .brand-lockup {
@@ -536,6 +559,12 @@ button {
   text-align: left;
 }
 
+.portfolio-mode button:hover {
+  border-color: rgba(var(--mode-accent-rgb), 0.28);
+  background: rgba(var(--mode-accent-rgb), 0.07);
+  color: var(--text);
+}
+
 .portfolio-mode button small {
   color: var(--muted);
   font-size: 0.68rem;
@@ -593,6 +622,22 @@ button {
     linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 48%),
     rgba(24, 28, 32, 0.82);
   padding: 12px 14px;
+}
+
+.account-summary .summary-card {
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.account-summary .summary-card:hover {
+  border-color: rgba(var(--mode-accent-rgb), 0.2);
+  background:
+    linear-gradient(135deg, rgba(var(--mode-accent-rgb), 0.08), transparent 48%),
+    rgba(24, 28, 32, 0.9);
+  transform: translateY(-1px);
 }
 
 .account-summary .summary-card.primary {
@@ -1094,8 +1139,12 @@ h2 {
 }
 
 .details-toggle:hover {
-  border-color: rgba(98, 200, 221, 0.58);
-  background: #1b2528;
+  border-color: rgba(var(--mode-accent-rgb), 0.58);
+  background:
+    linear-gradient(180deg, rgba(var(--mode-accent-rgb), 0.1), transparent),
+    #1b2528;
+  color: var(--mode-accent);
+  transform: translateY(-1px);
 }
 
 .workspace.details-collapsed {
@@ -1202,6 +1251,12 @@ h2 {
   white-space: nowrap;
 }
 
+.group-tabs button:hover {
+  border-color: rgba(var(--mode-accent-rgb), 0.32);
+  background: rgba(var(--mode-accent-rgb), 0.08);
+  color: var(--text);
+}
+
 .group-tab {
   position: relative;
   display: inline-flex;
@@ -1214,9 +1269,12 @@ h2 {
 }
 
 .group-tab.active .group-select {
-  border-color: var(--cyan);
-  background: #1b2528;
+  border-color: var(--mode-accent);
+  background:
+    linear-gradient(135deg, rgba(var(--mode-accent-rgb), 0.12), transparent),
+    #1b2528;
   color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .group-tab.active .group-select {
@@ -1296,13 +1354,19 @@ h2 {
 .add-group-tab-button {
   min-width: 34px;
   height: 34px;
-  border: 1px solid rgba(98, 200, 221, 0.34);
+  border: 1px solid rgba(var(--mode-accent-rgb), 0.34);
   border-radius: 8px;
   background: #1b2528;
-  color: var(--cyan);
+  color: var(--mode-accent);
   font-size: 1.05rem;
   font-weight: 900;
   padding: 0 10px;
+}
+
+.add-group-tab button:hover,
+.add-group-tab-button:hover {
+  border-color: rgba(var(--mode-accent-rgb), 0.56);
+  background: rgba(var(--mode-accent-rgb), 0.12);
 }
 
 .add-group-tab-button {
@@ -1675,6 +1739,7 @@ h2 {
   transition:
     border-color 140ms ease,
     background 140ms ease,
+    box-shadow 140ms ease,
     transform 140ms ease;
   cursor: grab;
 }
@@ -1826,6 +1891,14 @@ h2 {
   font-weight: 850;
 }
 
+.trade-editor button:hover,
+.real-editor button:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent),
+    #20262b;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
 .real-editor button {
   border-color: rgba(var(--mode-accent-rgb), 0.34);
   color: var(--mode-accent);
@@ -1881,6 +1954,9 @@ h2 {
 
 .stock-card:hover {
   border-color: rgba(var(--mode-accent-rgb), 0.55);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
   transform: translateY(-1px);
 }
 
@@ -2098,16 +2174,22 @@ h2 {
   font-size: 0.74rem;
   font-weight: 850;
   padding: 4px 8px;
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .change-badge.up {
   color: var(--green);
   background: rgba(68, 208, 123, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(68, 208, 123, 0.08);
 }
 
 .change-badge.down {
   color: var(--red);
   background: rgba(255, 107, 107, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.08);
 }
 
 .up {
@@ -2272,14 +2354,23 @@ h2 {
   font-weight: 750;
 }
 
+.period-control button:hover,
+.mode-control button:hover {
+  background: rgba(var(--mode-accent-rgb), 0.08);
+  color: var(--text);
+}
+
 .mode-control button {
   min-width: 68px;
 }
 
 .period-control button.active,
 .mode-control button.active {
-  background: var(--surface-2);
+  background:
+    linear-gradient(180deg, rgba(var(--mode-accent-rgb), 0.14), transparent),
+    var(--surface-2);
   color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(var(--mode-accent-rgb), 0.2);
 }
 
 .chart-toggle {
@@ -2299,7 +2390,7 @@ h2 {
 .chart-toggle input {
   width: 16px;
   height: 16px;
-  accent-color: var(--cyan);
+  accent-color: var(--mode-accent);
 }
 
 .custom-period {
@@ -2813,5 +2904,22 @@ h2 {
   .history-page,
   .settings-page {
     padding: 14px 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  button:active,
+  .account-summary .summary-card:hover,
+  .details-toggle:hover,
+  .stock-card:hover,
+  .stock-card.dragging {
+    transform: none;
   }
 }
