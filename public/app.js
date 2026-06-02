@@ -110,7 +110,6 @@ const elements = {
   apiKeySecret: document.querySelector("#api-key-secret"),
   apiKeyList: document.querySelector("#api-key-list"),
   apiKeyMessage: document.querySelector("#api-key-message"),
-  portfolioSummary: document.querySelector("#portfolio-summary"),
   paperTradeHistory: document.querySelector("#paper-trade-history"),
   realTradeHistory: document.querySelector("#real-trade-history"),
   comparisonPeriodLabel: document.querySelector("#comparison-period-label"),
@@ -2096,39 +2095,6 @@ function renderGroups() {
 }
 
 function renderPortfolioSummary() {
-  const totals = portfolioTotals(isRealMode() ? Object.keys(state.realPositions) : currentSymbols());
-  const pnlClass = totals.pnl >= 0 ? "up" : "down";
-  const pnlPercent = totals.cost > 0 ? (totals.pnl / totals.cost) * 100 : 0;
-
-  elements.portfolioSummary.innerHTML = isRealMode()
-    ? `
-    <div>
-      <span>Real holdings</span>
-      <strong>${money(totals.value)}</strong>
-    </div>
-    <div>
-      <span>Cost basis</span>
-      <strong>${money(totals.cost)}</strong>
-    </div>
-    <div>
-      <span>Unrealized P/L</span>
-      <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
-    </div>
-  `
-    : `
-    <div>
-      <span>Holdings</span>
-      <strong>${money(totals.value)}</strong>
-    </div>
-    <div>
-      <span>Total equity</span>
-      <strong>${money(totals.equity)}</strong>
-    </div>
-    <div>
-      <span>P/L</span>
-      <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
-    </div>
-  `;
   renderTradeHistoryPanels();
 }
 
@@ -3663,7 +3629,7 @@ async function handleTradeHistoryClick(event) {
 elements.watchlist.addEventListener("click", async (event) => {
   if (await handleTradeHistoryClick(event)) return;
   const keepSelection = event.target.closest(
-    ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary, .trade-history, .stock-search"
+    ".stock-card, form, .panel-title, .group-tabs, .trade-history, .stock-search"
   );
   if (!keepSelection) {
     clearSelectedCard();

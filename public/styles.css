@@ -1058,25 +1058,6 @@ h2 {
   justify-content: center;
 }
 
-.portfolio-summary {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  margin-top: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #15191d;
-  padding: 12px;
-}
-
-.portfolio-summary div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.portfolio-summary span,
 .selected-position span,
 .position-editor span,
 .trade-editor span,
@@ -1084,10 +1065,6 @@ h2 {
 .alert-editor span {
   color: var(--muted);
   font-size: 0.76rem;
-}
-
-.portfolio-summary strong {
-  font-size: 0.94rem;
 }
 
 .trade-history {
