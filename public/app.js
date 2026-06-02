@@ -2209,7 +2209,7 @@ function tradeHistoryMarkup(transactions, modeLabel, options = {}) {
                     ? ` | Realized ${signedMoney(transaction.realizedPnl)}`
                     : "";
                 return `
-                  <div class="history-row">
+                  <div class="history-row ${escapeHtml(transaction.type)}">
                     <div>
                       <strong>${escapeHtml(transaction.symbol)}</strong>
                       <span>${escapeHtml(typeLabel)} | ${new Date(transaction.createdAt).toLocaleString()}</span>
@@ -2233,15 +2233,36 @@ function renderTradeHistoryPanels() {
 
   const paperTransactions = (state.paperTransactions || []).slice(0, 8);
   const realTransactions = (state.realTransactions || []).slice(0, 8);
-  elements.paperTradeHistory.hidden = false;
-  elements.realTradeHistory.hidden = false;
+  elements.paperTradeHistory.hidden = isRealMode();
+  elements.realTradeHistory.hidden = !isRealMode();
   elements.paperTradeHistory.innerHTML = tradeHistoryMarkup(paperTransactions, "paper", {
     clearAction: "clear-paper-history",
-    canClear: !state.session?.access_token
+    canClear: true
   });
   elements.realTradeHistory.innerHTML = tradeHistoryMarkup(realTransactions, "real", {
     clearAction: "clear-real-history"
   });
+}
+
+async function clearTradeHistory(action) {
+  if (action === "clear-real-history") {
+    state.realTransactions = [];
+    saveGroups();
+    if (state.cloudReady) await saveCloudData({ force: true });
+    renderPortfolioSummary();
+    renderTradeHistoryPanels();
+    elements.marketStatus.textContent = "Real transaction history cleared";
+    return;
+  }
+
+  if (state.session?.access_token) {
+    await postJson("/api/paper/trades/clear", {}, { auth: true });
+  }
+  state.paperTransactions = [];
+  saveGroups();
+  renderPortfolioSummary();
+  renderTradeHistoryPanels();
+  elements.marketStatus.textContent = "Paper transaction history cleared";
 }
 
 function renderAccountSummary() {
@@ -3630,28 +3651,32 @@ elements.apiKeyList.addEventListener("click", async (event) => {
 
 elements.toggleDetails.addEventListener("click", () => setDetailsPanelVisibility(!state.showDetailsPanel));
 
-elements.watchlist.addEventListener("click", (event) => {
+async function handleTradeHistoryClick(event) {
   const clearHistoryButton = event.target.closest("[data-action='clear-paper-history'], [data-action='clear-real-history']");
-  if (clearHistoryButton) {
-    if (clearHistoryButton.dataset.action === "clear-real-history") {
-      state.realTransactions = [];
-    } else {
-      state.paperTransactions = [];
-    }
-    saveGroups();
-    renderPortfolioSummary();
-    elements.marketStatus.textContent = `${
-      clearHistoryButton.dataset.action === "clear-real-history" ? "Real" : "Paper"
-    } transaction history cleared`;
-    return;
-  }
+  if (!clearHistoryButton) return false;
 
+  clearHistoryButton.disabled = true;
+  try {
+    await clearTradeHistory(clearHistoryButton.dataset.action);
+  } catch (error) {
+    elements.marketStatus.textContent = `Could not clear history: ${error.message}`;
+    clearHistoryButton.disabled = false;
+  }
+  return true;
+}
+
+elements.watchlist.addEventListener("click", async (event) => {
+  if (await handleTradeHistoryClick(event)) return;
   const keepSelection = event.target.closest(
     ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary, .trade-history, .stock-search"
   );
   if (!keepSelection) {
     clearSelectedCard();
   }
+});
+
+elements.historyPage.addEventListener("click", (event) => {
+  handleTradeHistoryClick(event);
 });
 
 elements.stockSearch.addEventListener("input", () => {

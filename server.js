@@ -1009,6 +1009,29 @@ async function paperAccountHandler(req, res) {
   }
 }
 
+async function clearPaperTradesHandler(req, res) {
+  if (req.method !== "POST" && req.method !== "DELETE") {
+    return json(res, 405, { error: "Use POST or DELETE to clear paper trades." });
+  }
+
+  try {
+    const actor = await paperActor(req, "paper:trade");
+    await actorRequest(
+      actor,
+      `/rest/v1/trades?user_id=eq.${encodeURIComponent(actor.user.id)}`,
+      {
+        method: "DELETE",
+        headers: { prefer: "return=minimal" }
+      }
+    );
+
+    return json(res, 200, { ok: true });
+  } catch (error) {
+    const status = error.message === "Missing user session" ? 401 : 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
 async function listApiKeysHandler(req, res) {
   if (req.method !== "GET") {
     return json(res, 405, { error: "Use GET for API keys." });
@@ -1141,6 +1164,7 @@ const server = http.createServer(async (req, res) => {
     if (path === "/api/keys/revoke") return revokeApiKeyHandler(req, res);
     if (path === "/api/paper/account") return paperAccountHandler(req, res);
     if (path === "/api/paper/trade") return paperTradeHandler(req, res);
+    if (path === "/api/paper/trades/clear") return clearPaperTradesHandler(req, res);
     if (path === "/api/config") return configHandler(req, res);
 
     return staticHandler(req, res);
