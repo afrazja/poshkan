@@ -118,7 +118,12 @@ const elements = {
   apiKeyMessage: document.querySelector("#api-key-message"),
   paperTradeHistory: document.querySelector("#paper-trade-history"),
   realTradeHistory: document.querySelector("#real-trade-history"),
+  comparisonPageKicker: document.querySelector("#comparison-page-kicker"),
+  comparisonPageTitle: document.querySelector("#comparison-page-title"),
   comparisonPeriodLabel: document.querySelector("#comparison-period-label"),
+  historyPageKicker: document.querySelector("#history-page-kicker"),
+  historyPageTitle: document.querySelector("#history-page-title"),
+  historyPageDescription: document.querySelector("#history-page-description"),
   comparisonControls: document.querySelector("#comparison-controls"),
   comparisonAmount: document.querySelector("#comparison-amount"),
   comparisonUnit: document.querySelector("#comparison-unit"),
@@ -2201,6 +2206,7 @@ function tradeHistoryMarkup(transactions, modeLabel, options = {}) {
 function renderTradeHistoryPanels() {
   if (!elements.paperTradeHistory || !elements.realTradeHistory) return;
 
+  renderHistoryPageContext();
   const paperTransactions = (state.paperTransactions || []).slice(0, 8);
   const realTransactions = (state.realTransactions || []).slice(0, 8);
   elements.paperTradeHistory.hidden = isRealMode();
@@ -2212,6 +2218,19 @@ function renderTradeHistoryPanels() {
   elements.realTradeHistory.innerHTML = tradeHistoryMarkup(realTransactions, "real", {
     clearAction: "clear-real-history"
   });
+}
+
+function renderHistoryPageContext() {
+  if (isRealMode()) {
+    elements.historyPageKicker.textContent = "Real portfolio history";
+    elements.historyPageTitle.textContent = "Real Portfolio Buys and Sales";
+    elements.historyPageDescription.textContent = "Review real tracker buys, sells, and manual holding updates.";
+    return;
+  }
+
+  elements.historyPageKicker.textContent = "Paper trade history";
+  elements.historyPageTitle.textContent = "Paper Buys and Sales";
+  elements.historyPageDescription.textContent = "Review practice trades made with virtual money.";
 }
 
 async function clearTradeHistory(action) {
@@ -2348,7 +2367,7 @@ function renderComparisonTable() {
   elements.comparisonAmount.value = state.comparisonAmount;
   elements.comparisonUnit.value = state.comparisonUnit;
   elements.comparisonSort.value = state.comparisonSort;
-  elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} performance`;
+  renderComparisonPageContext();
 
   const rows = comparisonRows();
   if (!rows.length) {
@@ -2367,7 +2386,7 @@ function renderComparisonTable() {
     return sorted * direction;
   });
   const sortMark = (key) =>
-    state.comparisonSort === key ? `<span aria-hidden="true">${state.comparisonSortDirection === "asc" ? "▲" : "▼"}</span>` : "";
+    state.comparisonSort === key ? `<span aria-hidden="true">${state.comparisonSortDirection === "asc" ? "ASC" : "DESC"}</span>` : "";
 
   elements.comparisonTable.innerHTML = `
     <table>
@@ -2405,6 +2424,19 @@ function renderComparisonTable() {
       </tbody>
     </table>
   `;
+}
+
+function renderComparisonPageContext() {
+  if (isRealMode()) {
+    elements.comparisonPageKicker.textContent = "Real portfolio table";
+    elements.comparisonPageTitle.textContent = "Real Portfolio Performance";
+    elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} real portfolio performance`;
+    return;
+  }
+
+  elements.comparisonPageKicker.textContent = "Paper comparison table";
+  elements.comparisonPageTitle.textContent = "Paper Stock Performance";
+  elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} paper performance`;
 }
 
 function resetPaperAccount() {
