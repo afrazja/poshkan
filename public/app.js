@@ -1407,19 +1407,14 @@ function renderApiKeys(keys = []) {
 
   elements.apiKeyList.innerHTML = keys
     .map((key) => {
-      const isActive = key.status === "active";
       const lastUsed = key.last_used_at ? new Date(key.last_used_at).toLocaleString() : "Never used";
       return `
-        <div class="api-key-row ${isActive ? "" : "revoked"}">
+        <div class="api-key-row">
           <div>
             <strong>${escapeHtml(key.name || "Claude paper key")}</strong>
-            <small>${escapeHtml(key.key_prefix)} | ${escapeHtml(key.status)} | Last used: ${escapeHtml(lastUsed)}</small>
+            <small>${escapeHtml(key.key_prefix)} | Active | Last used: ${escapeHtml(lastUsed)}</small>
           </div>
-          ${
-            isActive
-              ? `<button type="button" data-api-key-revoke="${escapeHtml(key.id)}">Revoke</button>`
-              : ""
-          }
+          <button type="button" data-api-key-revoke="${escapeHtml(key.id)}">Revoke</button>
         </div>
       `;
     })

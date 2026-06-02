@@ -1042,7 +1042,7 @@ async function listApiKeysHandler(req, res) {
     const keys = await supabaseRequest(
       `/rest/v1/api_keys?select=id,name,key_prefix,permissions,status,last_used_at,created_at,revoked_at&user_id=eq.${encodeURIComponent(
         actor.user.id
-      )}&order=created_at.desc`,
+      )}&status=eq.active&order=created_at.desc`,
       actor.token,
       { method: "GET" }
     );
@@ -1109,16 +1109,12 @@ async function revokeApiKeyHandler(req, res) {
       `/rest/v1/api_keys?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(actor.user.id)}`,
       actor.token,
       {
-        method: "PATCH",
-        headers: { prefer: "return=minimal" },
-        body: JSON.stringify({
-          status: "revoked",
-          revoked_at: new Date().toISOString()
-        })
+        method: "DELETE",
+        headers: { prefer: "return=minimal" }
       }
     );
 
-    return json(res, 200, { ok: true });
+    return json(res, 200, { ok: true, removed: true });
   } catch (error) {
     const status = error.message === "Missing user session" ? 401 : 500;
     return json(res, status, { error: error.message });
