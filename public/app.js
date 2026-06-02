@@ -1858,8 +1858,10 @@ function renderMobileNav() {
   elements.mobileNavButtons.forEach((button) => {
     const target = button.dataset.mobileNav;
     const active =
+      (target === "cards" && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
       (target === "table" && state.comparisonPageOpen) ||
-      (!state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen && target === state.portfolioMode);
+      (target === "history" && state.historyPageOpen) ||
+      (target === "settings" && state.settingsPageOpen);
     button.classList.toggle("active", active);
     button.classList.toggle("has-alerts", target === "alerts" && state.alertEvents.length > 0);
   });
@@ -3282,8 +3284,7 @@ elements.portfolioModeButtons.forEach((button) => {
 elements.mobileNavButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const target = button.dataset.mobileNav;
-    if (target === "paper" || target === "real") {
-      setPortfolioMode(target);
+    if (target === "cards") {
       state.comparisonPageOpen = false;
       state.historyPageOpen = false;
       state.settingsPageOpen = false;
@@ -3298,6 +3299,24 @@ elements.mobileNavButtons.forEach((button) => {
       state.settingsPageOpen = false;
       renderComparisonPageVisibility();
       refreshPerformance({ quiet: true });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (target === "history") {
+      state.historyPageOpen = true;
+      state.comparisonPageOpen = false;
+      state.settingsPageOpen = false;
+      renderComparisonPageVisibility();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (target === "settings") {
+      state.settingsPageOpen = true;
+      state.comparisonPageOpen = false;
+      state.historyPageOpen = false;
+      renderComparisonPageVisibility();
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }

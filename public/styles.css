@@ -2222,7 +2222,7 @@ h2 {
 
 @media (max-width: 880px) {
   body {
-    padding-bottom: 76px;
+    padding-bottom: 84px;
   }
 
   .shell {
@@ -2356,8 +2356,8 @@ h2 {
     bottom: 12px;
     z-index: 20;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
     border: 1px solid rgba(238, 243, 245, 0.12);
     border-radius: 8px;
     background: rgba(17, 19, 21, 0.94);
@@ -2374,7 +2374,7 @@ h2 {
     border-radius: 7px;
     background: transparent;
     color: var(--muted);
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 900;
   }
 
@@ -2407,6 +2407,19 @@ h2 {
 @media (max-width: 520px) {
   .shell {
     padding: 12px;
+  }
+
+  .mobile-nav {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    gap: 3px;
+    padding: 5px;
+  }
+
+  .mobile-nav button {
+    height: 42px;
+    font-size: 0.66rem;
   }
 
   .watchlist,
