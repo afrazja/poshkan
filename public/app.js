@@ -763,6 +763,37 @@ function signedMoney(value) {
   return `${prefix}${money(Math.abs(value))}`;
 }
 
+function quoteStatus(symbol, quote) {
+  if (!quote) {
+    return {
+      label: "Loading live quote",
+      detail: "Waiting for market data",
+      className: "loading"
+    };
+  }
+
+  if (!Number.isFinite(Number(quote.regularMarketPrice))) {
+    return {
+      label: "Quote unavailable",
+      detail: "Price not available",
+      className: "unavailable"
+    };
+  }
+
+  const status = quote.cacheStatus || "fresh";
+  const age = Number.isFinite(Number(quote.dataAgeSeconds)) ? `${Number(quote.dataAgeSeconds)}s old` : "";
+  if (status === "demo") {
+    return { label: "Demo fallback", detail: age || "Live feed unreachable", className: "demo" };
+  }
+  if (status === "stale") {
+    return { label: "Using stale quote", detail: age || "Last saved quote", className: "stale" };
+  }
+  if (status === "cached") {
+    return { label: "Using cached quote", detail: age || "Short cache", className: "cached" };
+  }
+  return { label: "Live quote", detail: age || "Fresh market data", className: "live" };
+}
+
 function alertStatus(symbol) {
   const quote = state.quotes.get(symbol);
   const alert = alertFor(symbol);
@@ -1786,6 +1817,10 @@ async function refreshQuotes({ quiet = false } = {}) {
   try {
     const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
     const removedInvalids = quiet ? false : removeInvalidSymbols(data.invalids || []);
+    const invalidStatusMessage =
+      !quiet && removedInvalids
+        ? `${data.invalids.length} invalid symbol${data.invalids.length === 1 ? "" : "s"} removed.`
+        : "";
     if (!quiet && data.invalids?.length) {
       setAddStockMessage(invalidSymbolMessage(data.invalids), "error");
     }
@@ -1814,6 +1849,9 @@ async function refreshQuotes({ quiet = false } = {}) {
       }`;
     } else {
       elements.marketStatus.textContent = "Demo prices shown because live market data is unreachable";
+    }
+    if (invalidStatusMessage) {
+      elements.marketStatus.textContent = invalidStatusMessage;
     }
     elements.lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}${
       quoteReliabilityText(data) ? ` | ${quoteReliabilityText(data)}` : ""
@@ -2614,6 +2652,7 @@ function renderWatchlist() {
   elements.stockList.innerHTML = visibleSymbols
     .map((symbol) => {
       const quote = state.quotes.get(symbol);
+      const quoteState = quoteStatus(symbol, quote);
       const change = quote?.regularMarketChange;
       const changePercent = quote?.regularMarketChangePercent;
       const direction = change >= 0 ? "up" : "down";
@@ -2632,8 +2671,9 @@ function renderWatchlist() {
             <span class="stock-title">
               <strong>${escapeHtml(symbol)}</strong>
               <em class="market-pill">${escapeHtml(marketState)}</em>
+              <em class="quote-status ${escapeHtml(quoteState.className)}">${escapeHtml(quoteState.label)}</em>
             </span>
-            <span class="stock-name">${escapeHtml(quote?.shortName || "Waiting for quote")}</span>
+            <span class="stock-name">${escapeHtml(quote?.shortName || quoteState.detail)}</span>
             <span class="card-stats">
               <span>Vol ${compact(quote?.regularMarketVolume)}</span>
               <span>H ${moneyAxis(quote?.regularMarketDayHigh)}</span>
@@ -2674,6 +2714,7 @@ function renderSelectedQuote() {
 
   const change = quote.regularMarketChange;
   const direction = change >= 0 ? "up" : "down";
+  const quoteState = quoteStatus(quote.symbol, quote);
 
   elements.selectedName.textContent = quote.shortName || "Selected stock";
   elements.selectedSymbol.textContent = quote.symbol;
@@ -2681,11 +2722,10 @@ function renderSelectedQuote() {
   const marketTime = quote.regularMarketTime
     ? new Date(quote.regularMarketTime * 1000).toLocaleTimeString()
     : "time unknown";
-  const dataAge = Number.isFinite(Number(quote.dataAgeSeconds)) ? ` | age ${Number(quote.dataAgeSeconds)}s` : "";
-  const cacheStatus = quote.cacheStatus && quote.cacheStatus !== "fresh" ? ` | ${quote.cacheStatus}` : "";
+  const dataAge = quoteState.detail ? ` | ${quoteState.detail}` : "";
   elements.selectedChange.textContent = `${signed(change)} (${signed(quote.regularMarketChangePercent, "%")}) | Vol ${compact(
     quote.regularMarketVolume
-  )} | ${quote.marketState || "DATA"} | ${marketTime}${cacheStatus}${dataAge}`;
+  )} | ${quote.marketState || "DATA"} | ${quoteState.label} | ${marketTime}${dataAge}`;
   elements.selectedChange.className = direction;
   const stats = positionStats(quote.symbol);
   const pnlDirection = stats.pnl >= 0 ? "up" : "down";
