@@ -147,6 +147,7 @@
             <h2>Watchlist</h2>
             <div class="panel-actions">
               <button id="open-comparison" type="button">Table</button>
+              <button id="open-history" type="button">History</button>
               <button id="refresh-now" title="Refresh quotes">Refresh</button>
             </div>
           </div>
@@ -178,8 +179,6 @@
           <div id="group-label" class="group-label">Groups</div>
           <div id="group-tabs" class="group-tabs" aria-label="Watchlist groups"></div>
           <div id="portfolio-summary" class="portfolio-summary" aria-live="polite"></div>
-          <div id="paper-trade-history" class="trade-history paper-trade-history"></div>
-          <div id="real-trade-history" class="trade-history real-trade-history" hidden></div>
           <label class="stock-search" for="stock-search">
             <span>Search current stocks</span>
             <input id="stock-search" type="search" placeholder="Search symbol or name" autocomplete="off" />
@@ -301,6 +300,24 @@
           </label>
         </form>
         <div id="comparison-table" class="comparison-table"></div>
+      </section>
+
+      <section id="history-page" class="history-page" aria-label="Trade history" hidden>
+        <div class="comparison-page-head">
+          <div>
+            <p class="eyebrow">Trade history</p>
+            <h2>Recent Buys and Sales</h2>
+            <span>Review paper strategy trades and real portfolio actions.</span>
+          </div>
+          <div class="comparison-page-actions">
+            <button id="refresh-history" type="button">Update</button>
+            <button id="back-from-history" type="button">Back to cards</button>
+          </div>
+        </div>
+        <div class="history-grid">
+          <div id="paper-trade-history" class="trade-history paper-trade-history"></div>
+          <div id="real-trade-history" class="trade-history real-trade-history"></div>
+        </div>
       </section>
 
       <nav class="mobile-nav" aria-label="Mobile app navigation">

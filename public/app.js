@@ -41,6 +41,7 @@ const state = {
   comparisonSortDirection: localStorage.getItem("stock-dashboard-comparison-sort-direction") === "asc" ? "asc" : "desc",
   comparisonLoading: false,
   comparisonPageOpen: false,
+  historyPageOpen: false,
   stockSearch: "",
   performance: new Map(),
   chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
@@ -97,8 +98,12 @@ const elements = {
   watchlist: document.querySelector(".watchlist"),
   workspace: document.querySelector(".workspace"),
   comparisonPage: document.querySelector("#comparison-page"),
+  historyPage: document.querySelector("#history-page"),
   openComparison: document.querySelector("#open-comparison"),
+  openHistory: document.querySelector("#open-history"),
   backToCards: document.querySelector("#back-to-cards"),
+  backFromHistory: document.querySelector("#back-from-history"),
+  refreshHistoryPage: document.querySelector("#refresh-history"),
   accountSummary: document.querySelector("#account-summary"),
   apiKeyPanel: document.querySelector("#api-key-panel"),
   apiKeyCreate: document.querySelector("#create-api-key"),
@@ -1829,10 +1834,14 @@ function renderSectionVisibility() {
 }
 
 function renderComparisonPageVisibility() {
-  elements.workspace.hidden = state.comparisonPageOpen;
+  elements.workspace.hidden = state.comparisonPageOpen || state.historyPageOpen;
   elements.comparisonPage.hidden = !state.comparisonPageOpen;
+  elements.historyPage.hidden = !state.historyPageOpen;
   if (state.comparisonPageOpen) {
     renderComparisonTable();
+  }
+  if (state.historyPageOpen) {
+    renderTradeHistoryPanels();
   }
   renderMobileNav();
 }
@@ -1842,7 +1851,7 @@ function renderMobileNav() {
     const target = button.dataset.mobileNav;
     const active =
       (target === "table" && state.comparisonPageOpen) ||
-      (!state.comparisonPageOpen && target === state.portfolioMode);
+      (!state.comparisonPageOpen && !state.historyPageOpen && target === state.portfolioMode);
     button.classList.toggle("active", active);
     button.classList.toggle("has-alerts", target === "alerts" && state.alertEvents.length > 0);
   });
@@ -2224,8 +2233,8 @@ function renderTradeHistoryPanels() {
 
   const paperTransactions = (state.paperTransactions || []).slice(0, 8);
   const realTransactions = (state.realTransactions || []).slice(0, 8);
-  elements.paperTradeHistory.hidden = isRealMode();
-  elements.realTradeHistory.hidden = !isRealMode();
+  elements.paperTradeHistory.hidden = false;
+  elements.realTradeHistory.hidden = false;
   elements.paperTradeHistory.innerHTML = tradeHistoryMarkup(paperTransactions, "paper", {
     clearAction: "clear-paper-history",
     canClear: !state.session?.access_token
@@ -3133,6 +3142,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
 function setPortfolioMode(mode) {
   state.portfolioMode = mode === "real" ? "real" : "paper";
   state.comparisonPageOpen = false;
+  state.historyPageOpen = false;
   clearStockSearch();
   state.selected = currentSymbols()[0] || null;
   state.performance.clear();
@@ -3267,6 +3277,7 @@ elements.mobileNavButtons.forEach((button) => {
 
     if (target === "table") {
       state.comparisonPageOpen = true;
+      state.historyPageOpen = false;
       renderComparisonPageVisibility();
       refreshPerformance({ quiet: true });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3506,13 +3517,30 @@ elements.refresh.addEventListener("click", () => refreshQuotes());
 
 elements.openComparison.addEventListener("click", () => {
   state.comparisonPageOpen = true;
+  state.historyPageOpen = false;
   renderComparisonPageVisibility();
   if (!state.performance.size) refreshPerformance();
+});
+
+elements.openHistory.addEventListener("click", () => {
+  state.historyPageOpen = true;
+  state.comparisonPageOpen = false;
+  renderComparisonPageVisibility();
 });
 
 elements.backToCards.addEventListener("click", () => {
   state.comparisonPageOpen = false;
   renderComparisonPageVisibility();
+});
+
+elements.backFromHistory.addEventListener("click", () => {
+  state.historyPageOpen = false;
+  renderComparisonPageVisibility();
+});
+
+elements.refreshHistoryPage.addEventListener("click", () => {
+  renderTradeHistoryPanels();
+  syncPaperAccount({ quiet: false });
 });
 
 function applyComparisonControls() {
