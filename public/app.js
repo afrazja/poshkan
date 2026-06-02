@@ -832,8 +832,19 @@ function renderAlertTray() {
   }
 
   elements.alertTray.innerHTML = state.alertEvents
-    .map(
-      (event) => `
+    .map((event) => {
+      if (event.type === "undo-remove") {
+        return `
+          <div class="alert-toast undo-toast">
+            <strong>${escapeHtml(event.symbol)}</strong>
+            <span>${escapeHtml(event.message)}</span>
+            <button type="button" data-undo-remove="${escapeHtml(event.key)}">Undo</button>
+            <button type="button" data-alert-dismiss="${escapeHtml(event.key)}" title="Dismiss">x</button>
+          </div>
+        `;
+      }
+
+      return `
         <div class="alert-toast">
           <strong>${escapeHtml(event.symbol)}</strong>
           <span>${event.direction === "above" ? "Above" : "Below"} ${moneyAxis(event.target)} at ${moneyAxis(
@@ -842,10 +853,68 @@ function renderAlertTray() {
           <time>${new Date(event.time).toLocaleTimeString()}</time>
           <button type="button" data-alert-dismiss="${escapeHtml(event.key)}" title="Dismiss alert">x</button>
         </div>
-      `
-    )
+      `;
+    })
     .join("");
   renderMobileNav();
+}
+
+function addUndoRemoveEvent(snapshot) {
+  const label = snapshot.mode === "real" ? "real portfolio" : "paper group";
+  const message = `${snapshot.symbol} removed from ${label}.`;
+  state.alertEvents.unshift({
+    type: "undo-remove",
+    key: `undo:${Date.now()}:${snapshot.mode}:${snapshot.symbol}`,
+    symbol: snapshot.symbol,
+    message,
+    snapshot,
+    time: Date.now()
+  });
+  state.alertEvents = state.alertEvents.slice(0, 4);
+  renderAlertTray();
+}
+
+async function restoreRemovedStock(key) {
+  const event = state.alertEvents.find((item) => item.key === key && item.type === "undo-remove");
+  if (!event?.snapshot) return;
+
+  const snapshot = event.snapshot;
+  if (snapshot.mode === "real") {
+    state.removedRealSymbols.delete(snapshot.symbol);
+    if (snapshot.position) {
+      state.realPositions[snapshot.symbol] = { ...snapshot.position };
+    }
+    if (snapshot.watchlist) {
+      state.realWatchlist = state.realWatchlist.filter((item) => item !== snapshot.symbol);
+      state.realWatchlist.splice(Math.min(snapshot.index, state.realWatchlist.length), 0, snapshot.symbol);
+    }
+    if (snapshot.quote) state.quotes.set(snapshot.symbol, snapshot.quote);
+    state.activeRealTab = snapshot.realTab || state.activeRealTab;
+    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
+    state.selected = snapshot.symbol;
+    saveGroups();
+    renderWatchlist();
+    renderSelectedQuote();
+    if (state.cloudReady) await saveCloudData({ force: true });
+  } else {
+    const group = state.groups.find((item) => item.id === snapshot.groupId) || activeGroup();
+    group.symbols = group.symbols.filter((item) => item !== snapshot.symbol);
+    group.symbols.splice(Math.min(snapshot.index, group.symbols.length), 0, snapshot.symbol);
+    group.portfolio ||= {};
+    group.alerts ||= {};
+    if (snapshot.portfolio) group.portfolio[snapshot.symbol] = { ...snapshot.portfolio };
+    if (snapshot.alert) group.alerts[snapshot.symbol] = { ...snapshot.alert };
+    if (snapshot.quote) state.quotes.set(snapshot.symbol, snapshot.quote);
+    state.activeGroupId = group.id;
+    localStorage.setItem(ACTIVE_GROUP_KEY, group.id);
+    state.selected = snapshot.symbol;
+    saveGroups();
+    renderWatchlist();
+    renderSelectedQuote();
+  }
+
+  state.alertEvents = state.alertEvents.filter((item) => item.key !== key);
+  renderAlertTray();
 }
 
 function cardSparkline(symbol, quote, direction) {
@@ -3758,7 +3827,13 @@ elements.stockSearch.addEventListener("input", () => {
   renderWatchlist();
 });
 
-elements.alertTray.addEventListener("click", (event) => {
+elements.alertTray.addEventListener("click", async (event) => {
+  const undoButton = event.target.closest("button[data-undo-remove]");
+  if (undoButton) {
+    await restoreRemovedStock(undoButton.dataset.undoRemove);
+    return;
+  }
+
   const button = event.target.closest("button[data-alert-dismiss]");
   if (!button) return;
 
@@ -3814,10 +3889,19 @@ elements.stockList.addEventListener("click", async (event) => {
   const symbol = button.dataset.symbol;
   if (button.dataset.action === "remove") {
     if (isRealMode()) {
+      const snapshot = {
+        mode: "real",
+        symbol,
+        realTab: state.activeRealTab,
+        quote: state.quotes.get(symbol) || null
+      };
       if (isRealOwnedTab()) {
+        snapshot.position = state.realPositions[symbol] ? { ...state.realPositions[symbol] } : null;
         state.removedRealSymbols.add(symbol);
         delete state.realPositions[symbol];
       } else {
+        snapshot.watchlist = true;
+        snapshot.index = Math.max(0, state.realWatchlist.indexOf(symbol));
         state.removedRealSymbols.add(symbol);
         state.realWatchlist = state.realWatchlist.filter((item) => item !== symbol);
       }
@@ -3828,9 +3912,19 @@ elements.stockList.addEventListener("click", async (event) => {
       renderSelectedQuote();
       if (state.selected) await selectStock(state.selected);
       if (state.cloudReady) await saveCloudData({ force: true });
+      addUndoRemoveEvent(snapshot);
       return;
     }
     const group = activeGroup();
+    const snapshot = {
+      mode: "paper",
+      symbol,
+      groupId: group.id,
+      index: Math.max(0, group.symbols.indexOf(symbol)),
+      portfolio: group.portfolio?.[symbol] ? { ...group.portfolio[symbol] } : null,
+      alert: group.alerts?.[symbol] ? { ...group.alerts[symbol] } : null,
+      quote: state.quotes.get(symbol) || null
+    };
     group.symbols = group.symbols.filter((item) => item !== symbol);
     delete group.portfolio?.[symbol];
     delete group.alerts?.[symbol];
@@ -3840,6 +3934,7 @@ elements.stockList.addEventListener("click", async (event) => {
     renderWatchlist();
     renderSelectedQuote();
     if (state.selected) await selectStock(state.selected);
+    addUndoRemoveEvent(snapshot);
     return;
   }
 

@@ -885,8 +885,19 @@ h2 {
   padding: 10px 12px;
 }
 
+.alert-toast.undo-toast {
+  border-color: rgba(98, 200, 221, 0.38);
+  background:
+    linear-gradient(90deg, rgba(98, 200, 221, 0.12), transparent 36%),
+    #15191d;
+}
+
 .alert-toast strong {
   color: var(--gold);
+}
+
+.alert-toast.undo-toast strong {
+  color: var(--cyan);
 }
 
 .alert-toast span,
@@ -908,6 +919,19 @@ h2 {
 .alert-toast button:hover {
   border-color: rgba(255, 107, 107, 0.5);
   color: var(--red);
+}
+
+.alert-toast button[data-undo-remove] {
+  width: auto;
+  min-width: 58px;
+  border-color: rgba(98, 200, 221, 0.34);
+  color: var(--cyan);
+  padding: 0 10px;
+}
+
+.alert-toast button[data-undo-remove]:hover {
+  border-color: rgba(98, 200, 221, 0.62);
+  color: var(--text);
 }
 
 .mobile-nav {
