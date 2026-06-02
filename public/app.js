@@ -91,6 +91,7 @@ const elements = {
   watchlistAddTitle: document.querySelector("#watchlist-add-title"),
   groupLabel: document.querySelector("#group-label"),
   portfolioModeButtons: document.querySelectorAll("[data-portfolio-mode]"),
+  modeContext: document.querySelector("#mode-context"),
   mobileNavButtons: document.querySelectorAll("[data-mobile-nav]"),
   mobileAlertCount: document.querySelector("#mobile-alert-count"),
   portfolioHealth: document.querySelector("#portfolio-health"),
@@ -2292,22 +2293,35 @@ function renderAccountSummary() {
 }
 
 function renderPortfolioMode() {
+  const realMode = isRealMode();
+  elements.dashboardShell.classList.toggle("mode-paper", !realMode);
+  elements.dashboardShell.classList.toggle("mode-real", realMode);
   elements.portfolioModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.portfolioMode === state.portfolioMode);
   });
-  elements.apiKeyPanel.hidden = isRealMode();
+  elements.modeContext.className = `mode-context ${realMode ? "real" : "paper"}`;
+  elements.modeContext.innerHTML = realMode
+    ? `
+      <strong>Real Portfolio Tracker</strong>
+      <span>Track your actual holdings and watchlist. Claude paper trades will not change this section.</span>
+    `
+    : `
+      <strong>Paper Trading Practice</strong>
+      <span>Practice buy and sell ideas with virtual money. Claude API trades stay inside this paper portfolio.</span>
+    `;
+  elements.apiKeyPanel.hidden = realMode;
   elements.form.hidden = isRealOwnedTab();
   elements.realPositionForm.hidden = !isRealOwnedTab();
   elements.groupTabs.hidden = false;
   elements.groupLabel.hidden = false;
-  elements.groupLabel.textContent = isRealMode() ? "Real portfolio" : "Groups";
+  elements.groupLabel.textContent = realMode ? "Real portfolio" : "Paper groups";
   elements.input.placeholder = isRealWatchlistTab() ? "TSLA" : "AAPL";
   elements.watchlistAddTitle.textContent = isRealOwnedTab()
     ? "Add or update owned stock"
     : isRealWatchlistTab()
       ? "Add stock to real watch list"
-    : "Add stock to selected group";
-  elements.stockSearch.placeholder = isRealMode() ? "Search real stocks" : "Search group stocks";
+    : "Add stock to paper group";
+  elements.stockSearch.placeholder = realMode ? "Search real stocks" : "Search paper stocks";
   renderMobileNav();
 }
 

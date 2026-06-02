@@ -121,9 +121,16 @@
       <section id="account-summary" class="account-summary" aria-live="polite"></section>
       <section id="portfolio-health" class="portfolio-health" aria-live="polite"></section>
       <section class="portfolio-mode" aria-label="Portfolio mode">
-        <button type="button" class="active" data-portfolio-mode="paper">Paper Trading</button>
-        <button type="button" data-portfolio-mode="real">Real Portfolio</button>
+        <button type="button" class="active" data-portfolio-mode="paper">
+          <span>Paper Trading</span>
+          <small>Practice</small>
+        </button>
+        <button type="button" data-portfolio-mode="real">
+          <span>Real Portfolio</span>
+          <small>Tracker</small>
+        </button>
       </section>
+      <section id="mode-context" class="mode-context paper" aria-live="polite"></section>
 
       <section class="status-row" aria-live="polite">
         <div>
