@@ -90,6 +90,7 @@ const elements = {
   realAvgCost: document.querySelector("#real-avg-cost"),
   watchlistAddTitle: document.querySelector("#watchlist-add-title"),
   groupLabel: document.querySelector("#group-label"),
+  appNavButtons: document.querySelectorAll("[data-app-nav]"),
   portfolioModeButtons: document.querySelectorAll("[data-portfolio-mode]"),
   modeContext: document.querySelector("#mode-context"),
   mobileNavButtons: document.querySelectorAll("[data-mobile-nav]"),
@@ -103,9 +104,6 @@ const elements = {
   comparisonPage: document.querySelector("#comparison-page"),
   historyPage: document.querySelector("#history-page"),
   settingsPage: document.querySelector("#settings-page"),
-  openComparison: document.querySelector("#open-comparison"),
-  openHistory: document.querySelector("#open-history"),
-  openSettings: document.querySelector("#open-settings"),
   backToCards: document.querySelector("#back-to-cards"),
   backFromHistory: document.querySelector("#back-from-history"),
   backFromSettings: document.querySelector("#back-from-settings"),
@@ -1966,8 +1964,7 @@ function renderComparisonPageVisibility() {
 }
 
 function renderMobileNav() {
-  elements.mobileNavButtons.forEach((button) => {
-    const target = button.dataset.mobileNav;
+  const applyState = (button, target) => {
     const active =
       (target === "cards" && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
       (target === "table" && state.comparisonPageOpen) ||
@@ -1975,11 +1972,55 @@ function renderMobileNav() {
       (target === "settings" && state.settingsPageOpen);
     button.classList.toggle("active", active);
     button.classList.toggle("has-alerts", target === "alerts" && state.alertEvents.length > 0);
+  };
+
+  elements.appNavButtons.forEach((button) => {
+    applyState(button, button.dataset.appNav);
+  });
+
+  elements.mobileNavButtons.forEach((button) => {
+    applyState(button, button.dataset.mobileNav);
   });
 
   if (elements.mobileAlertCount) {
     elements.mobileAlertCount.hidden = !state.alertEvents.length;
     elements.mobileAlertCount.textContent = String(state.alertEvents.length);
+  }
+}
+
+function navigateMain(target, { scroll = false } = {}) {
+  if (target === "cards") {
+    state.comparisonPageOpen = false;
+    state.historyPageOpen = false;
+    state.settingsPageOpen = false;
+  } else if (target === "table") {
+    state.comparisonPageOpen = true;
+    state.historyPageOpen = false;
+    state.settingsPageOpen = false;
+  } else if (target === "history") {
+    state.historyPageOpen = true;
+    state.comparisonPageOpen = false;
+    state.settingsPageOpen = false;
+  } else if (target === "settings") {
+    state.settingsPageOpen = true;
+    state.comparisonPageOpen = false;
+    state.historyPageOpen = false;
+  } else if (target === "alerts") {
+    if (!state.alertEvents.length) {
+      elements.marketStatus.textContent = "No active alerts right now";
+      document.querySelector(".status-row")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    elements.alertTray.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  renderComparisonPageVisibility();
+  if (target === "table") {
+    refreshPerformance({ quiet: true });
+  }
+  if (scroll) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 }
 
@@ -3434,54 +3475,13 @@ elements.portfolioModeButtons.forEach((button) => {
   button.addEventListener("click", () => setPortfolioMode(button.dataset.portfolioMode));
 });
 
+elements.appNavButtons.forEach((button) => {
+  button.addEventListener("click", () => navigateMain(button.dataset.appNav));
+});
+
 elements.mobileNavButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    const target = button.dataset.mobileNav;
-    if (target === "cards") {
-      state.comparisonPageOpen = false;
-      state.historyPageOpen = false;
-      state.settingsPageOpen = false;
-      renderComparisonPageVisibility();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    if (target === "table") {
-      state.comparisonPageOpen = true;
-      state.historyPageOpen = false;
-      state.settingsPageOpen = false;
-      renderComparisonPageVisibility();
-      refreshPerformance({ quiet: true });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    if (target === "history") {
-      state.historyPageOpen = true;
-      state.comparisonPageOpen = false;
-      state.settingsPageOpen = false;
-      renderComparisonPageVisibility();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    if (target === "settings") {
-      state.settingsPageOpen = true;
-      state.comparisonPageOpen = false;
-      state.historyPageOpen = false;
-      renderComparisonPageVisibility();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    if (target === "alerts") {
-      if (!state.alertEvents.length) {
-        elements.marketStatus.textContent = "No active alerts right now";
-        document.querySelector(".status-row")?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-      elements.alertTray.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    navigateMain(button.dataset.mobileNav, { scroll: true });
   });
 });
 
@@ -3705,41 +3705,16 @@ elements.groupTabs.addEventListener("focusout", (event) => {
 
 elements.refresh.addEventListener("click", () => refreshQuotes());
 
-elements.openComparison.addEventListener("click", () => {
-  state.comparisonPageOpen = true;
-  state.historyPageOpen = false;
-  state.settingsPageOpen = false;
-  renderComparisonPageVisibility();
-  if (!state.performance.size) refreshPerformance();
-});
-
-elements.openHistory.addEventListener("click", () => {
-  state.historyPageOpen = true;
-  state.comparisonPageOpen = false;
-  state.settingsPageOpen = false;
-  renderComparisonPageVisibility();
-});
-
-elements.openSettings.addEventListener("click", () => {
-  state.settingsPageOpen = true;
-  state.comparisonPageOpen = false;
-  state.historyPageOpen = false;
-  renderComparisonPageVisibility();
-});
-
 elements.backToCards.addEventListener("click", () => {
-  state.comparisonPageOpen = false;
-  renderComparisonPageVisibility();
+  navigateMain("cards");
 });
 
 elements.backFromHistory.addEventListener("click", () => {
-  state.historyPageOpen = false;
-  renderComparisonPageVisibility();
+  navigateMain("cards");
 });
 
 elements.backFromSettings.addEventListener("click", () => {
-  state.settingsPageOpen = false;
-  renderComparisonPageVisibility();
+  navigateMain("cards");
 });
 
 elements.refreshHistoryPage.addEventListener("click", () => {

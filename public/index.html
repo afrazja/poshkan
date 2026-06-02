@@ -114,10 +114,15 @@
         </div>
         <div class="topbar-account">
           <span id="account-identity" class="account-identity"></span>
-          <button id="open-settings" class="topbar-button" type="button">Settings</button>
           <button id="sign-out" class="sign-out" type="button">Sign out</button>
         </div>
       </section>
+      <nav class="app-nav" aria-label="Main app navigation">
+        <button type="button" class="active" data-app-nav="cards">Cards</button>
+        <button id="open-comparison" type="button" data-app-nav="table">Table</button>
+        <button id="open-history" type="button" data-app-nav="history">History</button>
+        <button id="open-settings" type="button" data-app-nav="settings">Settings</button>
+      </nav>
       <section id="account-summary" class="account-summary" aria-live="polite"></section>
       <section id="portfolio-health" class="portfolio-health" aria-live="polite"></section>
       <section class="portfolio-mode" aria-label="Portfolio mode">
@@ -146,8 +151,6 @@
           <div class="panel-title">
             <h2>Watchlist</h2>
             <div class="panel-actions">
-              <button id="open-comparison" type="button">Table</button>
-              <button id="open-history" type="button">History</button>
               <button id="refresh-now" title="Refresh quotes">Refresh</button>
             </div>
           </div>
