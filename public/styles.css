@@ -554,12 +554,32 @@ button {
   font-size: 0.82rem;
 }
 
-.account-summary div,
+.account-summary .summary-card,
 .account-summary button {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(24, 28, 32, 0.82);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 48%),
+    rgba(24, 28, 32, 0.82);
   padding: 12px 14px;
+}
+
+.account-summary .summary-card.primary {
+  border-color: rgba(98, 200, 221, 0.26);
+  background:
+    linear-gradient(135deg, rgba(98, 200, 221, 0.14), transparent 52%),
+    rgba(24, 28, 32, 0.92);
+}
+
+.mode-real .account-summary .summary-card.primary {
+  border-color: rgba(240, 196, 106, 0.26);
+  background:
+    linear-gradient(135deg, rgba(240, 196, 106, 0.13), transparent 52%),
+    rgba(24, 28, 32, 0.92);
+}
+
+.account-summary .summary-card.emphasis {
+  border-color: rgba(238, 243, 245, 0.16);
 }
 
 .account-summary button {
@@ -575,13 +595,25 @@ button {
 .account-summary span {
   display: block;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .account-summary strong {
   display: block;
-  margin-top: 4px;
-  font-size: 1.05rem;
+  margin-top: 6px;
+  font-size: 1.14rem;
+  letter-spacing: 0;
+}
+
+.account-summary .summary-card.primary strong {
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  line-height: 1;
+}
+
+.account-summary .summary-card.emphasis strong {
+  font-size: 1.28rem;
 }
 
 .portfolio-health {
@@ -1934,7 +1966,9 @@ h2 {
 }
 
 .quote-meta strong {
-  font-size: 1.08rem;
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 950;
 }
 
 .quantity-label {
@@ -2002,8 +2036,21 @@ h2 {
 
 .quote-hero {
   min-height: 92px;
+  border: 1px solid rgba(98, 200, 221, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(98, 200, 221, 0.1), transparent 46%),
+    rgba(21, 25, 29, 0.78);
+  margin-bottom: 14px;
+  padding: 16px;
   padding-bottom: 18px;
-  border-bottom: 1px solid var(--line);
+}
+
+.mode-real .quote-hero {
+  border-color: rgba(240, 196, 106, 0.18);
+  background:
+    linear-gradient(135deg, rgba(240, 196, 106, 0.1), transparent 46%),
+    rgba(21, 25, 29, 0.78);
 }
 
 .selected-position {
@@ -2016,13 +2063,21 @@ h2 {
 .selected-position > div {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #15191d;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 52%),
+    #15191d;
   padding: 12px;
 }
 
 .selected-position strong {
   display: block;
   margin-top: 6px;
+  font-size: 1.02rem;
+}
+
+.selected-position span {
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .selected-actions {
@@ -2182,7 +2237,8 @@ h2 {
 }
 
 #selected-symbol {
-  font-size: clamp(2rem, 5vw, 5.2rem);
+  font-size: clamp(2.35rem, 5.4vw, 5.8rem);
+  letter-spacing: 0;
   line-height: 0.95;
 }
 
@@ -2192,8 +2248,11 @@ h2 {
 
 #selected-price {
   display: block;
-  font-size: clamp(1.8rem, 3.6vw, 3.6rem);
-  font-weight: 800;
+  color: var(--text);
+  font-size: clamp(2rem, 4vw, 4rem);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 0.98;
 }
 
 #selected-change {

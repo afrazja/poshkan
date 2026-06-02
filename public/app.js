@@ -2416,19 +2416,19 @@ function renderAccountSummary() {
     const pnlClass = totals.pnl >= 0 ? "up" : "down";
     const pnlPercent = totals.cost > 0 ? (totals.pnl / totals.cost) * 100 : 0;
     elements.accountSummary.innerHTML = `
-      <div>
+      <div class="summary-card primary">
         <span>Real portfolio value</span>
         <strong>${money(totals.value)}</strong>
       </div>
-      <div>
+      <div class="summary-card">
         <span>Cost basis</span>
         <strong>${money(totals.cost)}</strong>
       </div>
-      <div>
+      <div class="summary-card emphasis">
         <span>Unrealized P/L</span>
         <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
       </div>
-      <div>
+      <div class="summary-card">
         <span>Positions</span>
         <strong>${currentSymbols().length}</strong>
       </div>
@@ -2442,23 +2442,23 @@ function renderAccountSummary() {
   const totalClass = totals.totalPnl >= 0 ? "up" : "down";
 
   elements.accountSummary.innerHTML = `
-    <div>
+    <div class="summary-card primary">
       <span>Cash available</span>
       <strong>${money(state.cash)}</strong>
     </div>
-    <div>
+    <div class="summary-card">
       <span>Money in stocks</span>
       <strong>${money(totals.holdings)}</strong>
     </div>
-    <div>
+    <div class="summary-card">
       <span>Realized P/L</span>
       <strong class="${realizedClass}">${signedMoney(totals.realizedPnl)}</strong>
     </div>
-    <div>
+    <div class="summary-card">
       <span>Unrealized P/L</span>
       <strong class="${unrealizedClass}">${signedMoney(totals.unrealizedPnl)}</strong>
     </div>
-    <div>
+    <div class="summary-card emphasis">
       <span>Total P/L</span>
       <strong class="${totalClass}">${signedMoney(totals.totalPnl)}</strong>
     </div>
