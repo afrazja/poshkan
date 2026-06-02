@@ -101,8 +101,8 @@ button {
 }
 
 .app-nav button.active {
-  border-color: rgba(98, 200, 221, 0.38);
-  background: rgba(98, 200, 221, 0.12);
+  border-color: rgba(var(--mode-accent-rgb), 0.42);
+  background: rgba(var(--mode-accent-rgb), 0.13);
   color: var(--text);
 }
 
@@ -351,6 +351,18 @@ button {
   display: none !important;
 }
 
+#dashboard-shell {
+  --mode-accent: var(--cyan);
+  --mode-accent-rgb: 98, 200, 221;
+  --mode-accent-soft: rgba(98, 200, 221, 0.12);
+}
+
+#dashboard-shell.mode-real {
+  --mode-accent: var(--gold);
+  --mode-accent-rgb: 240, 196, 106;
+  --mode-accent-soft: rgba(240, 196, 106, 0.12);
+}
+
 .auth-panel p {
   max-width: 540px;
   color: var(--muted);
@@ -511,14 +523,13 @@ button {
 }
 
 .portfolio-mode button.active {
-  border-color: rgba(98, 200, 221, 0.46);
-  background: rgba(98, 200, 221, 0.12);
+  border-color: rgba(var(--mode-accent-rgb), 0.48);
+  background: rgba(var(--mode-accent-rgb), 0.12);
   color: var(--text);
 }
 
 .mode-real .portfolio-mode button.active {
-  border-color: rgba(240, 196, 106, 0.48);
-  background: rgba(240, 196, 106, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(240, 196, 106, 0.08);
 }
 
 .mode-paper .portfolio-mode button[data-portfolio-mode="paper"] small,
@@ -531,15 +542,14 @@ button {
   align-items: center;
   gap: 10px;
   margin: -6px 0 14px;
-  border: 1px solid rgba(98, 200, 221, 0.28);
+  border: 1px solid rgba(var(--mode-accent-rgb), 0.3);
   border-radius: 8px;
-  background: rgba(98, 200, 221, 0.08);
+  background: rgba(var(--mode-accent-rgb), 0.08);
   padding: 10px 12px;
 }
 
 .mode-context.real {
-  border-color: rgba(240, 196, 106, 0.32);
-  background: rgba(240, 196, 106, 0.08);
+  box-shadow: inset 3px 0 0 rgba(68, 208, 123, 0.38);
 }
 
 .mode-context strong {
@@ -565,17 +575,14 @@ button {
 }
 
 .account-summary .summary-card.primary {
-  border-color: rgba(98, 200, 221, 0.26);
+  border-color: rgba(var(--mode-accent-rgb), 0.28);
   background:
-    linear-gradient(135deg, rgba(98, 200, 221, 0.14), transparent 52%),
+    linear-gradient(135deg, rgba(var(--mode-accent-rgb), 0.14), transparent 52%),
     rgba(24, 28, 32, 0.92);
 }
 
 .mode-real .account-summary .summary-card.primary {
-  border-color: rgba(240, 196, 106, 0.26);
-  background:
-    linear-gradient(135deg, rgba(240, 196, 106, 0.13), transparent 52%),
-    rgba(24, 28, 32, 0.92);
+  box-shadow: inset 3px 0 0 rgba(68, 208, 123, 0.34);
 }
 
 .account-summary .summary-card.emphasis {
@@ -1506,8 +1513,9 @@ h2 {
 .comparison-table {
   max-height: min(68vh, 760px);
   overflow: auto;
-  border: 1px solid rgba(238, 243, 245, 0.08);
+  border: 1px solid rgba(var(--mode-accent-rgb), 0.18);
   border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(var(--mode-accent-rgb), 0.12);
 }
 
 .comparison-table table {
@@ -1536,9 +1544,17 @@ h2 {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #20262b;
-  color: var(--muted);
+  background:
+    linear-gradient(180deg, rgba(var(--mode-accent-rgb), 0.12), transparent),
+    #20262b;
+  color: var(--text);
   font-weight: 850;
+}
+
+.comparison-table th:first-child {
+  background:
+    linear-gradient(180deg, rgba(var(--mode-accent-rgb), 0.12), transparent),
+    #20262b;
 }
 
 .comparison-table th button {
@@ -1553,14 +1569,14 @@ h2 {
 }
 
 .comparison-table th button span {
-  color: var(--cyan);
+  color: var(--mode-accent);
   font-size: 0.72rem;
 }
 
 .comparison-table td button {
   border: 0;
   background: transparent;
-  color: var(--cyan);
+  color: var(--mode-accent);
   font-weight: 900;
   padding: 0;
 }
@@ -1611,7 +1627,7 @@ h2 {
 
 .stock-card.dragging {
   opacity: 0.45;
-  border-color: var(--cyan);
+  border-color: var(--mode-accent);
   transform: scale(0.985);
 }
 
@@ -1753,11 +1769,13 @@ h2 {
 }
 
 .real-editor button {
-  border-color: rgba(98, 200, 221, 0.34);
-  color: var(--cyan);
+  border-color: rgba(var(--mode-accent-rgb), 0.34);
+  color: var(--mode-accent);
 }
 
 .real-editor button[data-real-action="save"] {
+  border-color: rgba(240, 196, 106, 0.42);
+  background: rgba(240, 196, 106, 0.1);
   color: var(--text);
 }
 
@@ -1804,13 +1822,27 @@ h2 {
 }
 
 .stock-card:hover {
-  border-color: rgba(98, 200, 221, 0.55);
+  border-color: rgba(var(--mode-accent-rgb), 0.55);
   transform: translateY(-1px);
 }
 
 .stock-card.active {
-  border-color: var(--cyan);
-  background: #1b2528;
+  border-color: var(--mode-accent);
+  background:
+    linear-gradient(135deg, rgba(var(--mode-accent-rgb), 0.12), transparent 46%),
+    #171d20;
+  box-shadow: inset 0 0 0 1px rgba(var(--mode-accent-rgb), 0.08);
+}
+
+.stock-card.active::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: var(--mode-accent);
 }
 
 .stock-card.compact {
@@ -2084,12 +2116,13 @@ h2 {
   grid-column: 1 / -1;
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(var(--mode-accent-rgb), 0.26);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(98, 200, 221, 0.07), transparent 42%),
+    linear-gradient(135deg, rgba(var(--mode-accent-rgb), 0.1), transparent 42%),
     #15191d;
   padding: 12px;
+  box-shadow: inset 3px 0 0 rgba(var(--mode-accent-rgb), 0.42);
 }
 
 .selected-actions-head {
@@ -2101,6 +2134,7 @@ h2 {
 
 .selected-actions-head strong {
   margin: 0;
+  color: var(--text);
   font-size: 0.92rem;
 }
 
@@ -2114,7 +2148,7 @@ h2 {
 .selected-actions .real-editor,
 .selected-actions .alert-editor {
   grid-column: auto;
-  border-top: 1px solid rgba(238, 243, 245, 0.08);
+  border-top: 1px solid rgba(var(--mode-accent-rgb), 0.14);
   padding-top: 10px;
 }
 
@@ -2264,13 +2298,15 @@ h2 {
 .chart-wrap {
   height: 320px;
   margin: 12px 0 22px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(var(--mode-accent-rgb), 0.22);
   border-radius: 8px;
   background:
+    radial-gradient(circle at top left, rgba(var(--mode-accent-rgb), 0.1), transparent 18rem),
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     #121619;
-  background-size: 100% 25%, 12.5% 100%, auto;
+  background-size: auto, 100% 25%, 12.5% 100%, auto;
+  box-shadow: inset 0 1px 0 rgba(var(--mode-accent-rgb), 0.12);
   overflow: hidden;
 }
 
@@ -2591,8 +2627,8 @@ h2 {
   }
 
   .mobile-nav button.active {
-    border-color: rgba(98, 200, 221, 0.38);
-    background: rgba(98, 200, 221, 0.13);
+    border-color: rgba(var(--mode-accent-rgb), 0.42);
+    background: rgba(var(--mode-accent-rgb), 0.13);
     color: var(--text);
   }
 
