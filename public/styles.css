@@ -2761,7 +2761,7 @@ h2 {
 
 @media (max-width: 880px) {
   body {
-    padding-bottom: 84px;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
 
   .shell {
@@ -2798,7 +2798,11 @@ h2 {
   }
 
   .account-summary {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-summary .summary-card.primary {
+    grid-column: 1 / -1;
   }
 
   .portfolio-health {
@@ -2817,6 +2821,11 @@ h2 {
   .watchlist {
     width: 100%;
     min-width: 0;
+    padding: 16px;
+  }
+
+  .details {
+    padding: 16px;
   }
 
   .details-toggle {
@@ -2847,6 +2856,11 @@ h2 {
   .chart-tools {
     overflow-x: auto;
     justify-content: flex-start;
+    scrollbar-width: thin;
+  }
+
+  .period-control {
+    max-width: 100%;
   }
 
   .custom-period {
@@ -2914,7 +2928,7 @@ h2 {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     z-index: 20;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2922,7 +2936,9 @@ h2 {
     border: 1px solid rgba(238, 243, 245, 0.12);
     border-radius: 8px;
     background: rgba(17, 19, 21, 0.94);
-    box-shadow: var(--shadow);
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.34),
+      inset 0 1px 0 rgba(255, 255, 255, 0.035);
     padding: 6px;
     backdrop-filter: blur(14px);
   }
@@ -2937,6 +2953,7 @@ h2 {
     color: var(--muted);
     font-size: 0.72rem;
     font-weight: 900;
+    line-height: 1.05;
   }
 
   .mobile-nav button.active {
@@ -2967,13 +2984,13 @@ h2 {
 
 @media (max-width: 520px) {
   .shell {
-    padding: 12px;
+    padding: 10px;
   }
 
   .mobile-nav {
     left: 8px;
     right: 8px;
-    bottom: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     gap: 3px;
     padding: 5px;
   }
@@ -2988,7 +3005,16 @@ h2 {
   .comparison-page,
   .history-page,
   .settings-page {
-    padding: 14px;
+    padding: 12px;
+  }
+
+  .account-summary {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .portfolio-health {
+    gap: 8px;
   }
 
   .portfolio-mode,
@@ -3006,14 +3032,57 @@ h2 {
     gap: 4px;
   }
 
+  .quote-hero {
+    gap: 10px;
+    padding: 14px;
+  }
+
+  #selected-symbol {
+    font-size: clamp(2.1rem, 14vw, 3.4rem);
+  }
+
+  #selected-price {
+    font-size: clamp(1.85rem, 12vw, 3rem);
+  }
+
+  .chart-head {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .period-control button,
+  .mode-control button {
+    min-width: 46px;
+  }
+
+  .custom-period {
+    grid-template-columns: 68px minmax(88px, 1fr) 68px;
+  }
+
+  .chart-wrap {
+    height: 260px;
+  }
+
   .panel-title {
     align-items: stretch;
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .panel-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel-actions button,
+  #refresh-now {
+    width: 100%;
   }
 
   .history-row {
     align-items: flex-start;
     flex-direction: column;
+    gap: 6px;
   }
 
   .history-row div:last-child {
@@ -3026,11 +3095,33 @@ h2 {
     padding: 12px;
   }
 
+  .stock-card .stock-title {
+    gap: 6px;
+  }
+
+  .stock-card .stock-title strong {
+    font-size: 1.05rem;
+    padding: 4px 7px;
+  }
+
+  .stock-name {
+    font-size: 0.88rem;
+  }
+
   .stock-card .quote-meta {
     grid-column: 1 / -1;
     grid-row: 2;
     min-height: 44px;
+    justify-items: start;
     text-align: left;
+  }
+
+  .stock-card .card-stats {
+    gap: 5px;
+  }
+
+  .stock-card .card-stats span {
+    max-width: 100%;
   }
 
   .stock-card .quantity-label {
@@ -3049,6 +3140,22 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .trade-editor,
+  .real-editor-section,
+  .alert-editor {
+    gap: 7px;
+  }
+
+  .trade-editor button,
+  .real-editor button,
+  .position-editor input,
+  .trade-editor input,
+  .real-editor input,
+  .alert-editor input,
+  .alert-editor select {
+    height: 40px;
+  }
+
   .real-action-note {
     min-height: 0;
   }
@@ -3064,7 +3171,42 @@ h2 {
   .comparison-page,
   .history-page,
   .settings-page {
-    padding: 14px 10px;
+    padding: 12px 10px;
+  }
+}
+
+@media (max-width: 390px) {
+  .shell {
+    padding: 8px;
+  }
+
+  .mobile-nav button {
+    height: 40px;
+    font-size: 0.6rem;
+  }
+
+  .portfolio-mode button {
+    min-height: 44px;
+    padding: 6px 9px;
+  }
+
+  .custom-period {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-period input,
+  .custom-period select,
+  .custom-period button {
+    width: 100%;
+  }
+
+  .chart-wrap {
+    height: 230px;
+  }
+
+  .stock-card .card-stats span {
+    font-size: 0.68rem;
+    padding: 4px 6px;
   }
 }
 
