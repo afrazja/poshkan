@@ -2309,7 +2309,6 @@ function renderPortfolioMode() {
       <strong>Paper Trading Practice</strong>
       <span>Practice buy and sell ideas with virtual money. Claude API trades stay inside this paper portfolio.</span>
     `;
-  elements.apiKeyPanel.hidden = realMode;
   elements.form.hidden = isRealOwnedTab();
   elements.realPositionForm.hidden = !isRealOwnedTab();
   elements.groupTabs.hidden = false;
@@ -2539,7 +2538,7 @@ function renderWatchlist() {
                     : `
                 <div class="real-editor">
                   <div class="real-editor-section">
-                    <strong>Current position</strong>
+                    <strong>Add existing holding</strong>
                     <label>
                       <span>Shares</span>
                       <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
@@ -2548,16 +2547,16 @@ function renderWatchlist() {
                       <span>Average cost</span>
                       <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
                     </label>
-                    <button type="button" data-real-action="save" data-symbol="${symbol}">Set</button>
+                    <button type="button" data-real-action="save" data-symbol="${symbol}">Save holding</button>
                   </div>
                   <div class="real-editor-section">
-                    <strong>Real trade</strong>
+                    <strong>Buy or sell transaction</strong>
                     <label>
                       <span>Shares</span>
                       <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
                     </label>
                     <label>
-                      <span>Price</span>
+                      <span>Trade price</span>
                       <input type="number" min="0" step="0.01" inputmode="decimal" data-real-trade-price data-symbol="${symbol}" value="${
                         Number.isFinite(quote?.regularMarketPrice) ? Number(quote.regularMarketPrice).toFixed(2) : ""
                       }" placeholder="Price" />

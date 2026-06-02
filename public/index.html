@@ -159,20 +159,29 @@
               <button type="submit" title="Add stock">+</button>
             </form>
             <form id="real-position-form" class="real-position-form" autocomplete="off" hidden>
-              <label>
-                <span>Symbol</span>
-                <input id="real-symbol" name="symbol" placeholder="AAPL" maxlength="12" />
-              </label>
-              <label>
-                <span>Shares</span>
-                <input id="real-shares" name="shares" type="number" min="0" step="0.0001" inputmode="decimal" />
-              </label>
-              <label>
-                <span>Avg cost</span>
-                <input id="real-avg-cost" name="avgCost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Optional for live buy" />
-              </label>
-              <button type="submit" name="realAction" value="set">Set</button>
-              <button type="submit" name="realAction" value="buy-live">Buy live</button>
+              <div class="real-position-shared">
+                <label>
+                  <span>Symbol</span>
+                  <input id="real-symbol" name="symbol" placeholder="AAPL" maxlength="12" />
+                </label>
+                <label>
+                  <span>Shares</span>
+                  <input id="real-shares" name="shares" type="number" min="0" step="0.0001" inputmode="decimal" />
+                </label>
+              </div>
+              <div class="real-action-card">
+                <strong>Add existing holding</strong>
+                <label>
+                  <span>Average cost</span>
+                  <input id="real-avg-cost" name="avgCost" type="number" min="0" step="0.01" inputmode="decimal" />
+                </label>
+                <button type="submit" name="realAction" value="set">Set holding</button>
+              </div>
+              <div class="real-action-card live">
+                <strong>Buy at live quote</strong>
+                <span class="real-action-note">Uses the latest available market price.</span>
+                <button type="submit" name="realAction" value="buy-live">Buy live</button>
+              </div>
             </form>
             <p id="add-stock-message" class="add-stock-message" aria-live="polite"></p>
           </div>

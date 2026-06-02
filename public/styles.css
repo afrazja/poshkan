@@ -746,18 +746,47 @@ h2 {
 
 .real-position-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  align-items: end;
+  align-items: stretch;
+}
+
+.real-position-shared {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 8px;
+}
+
+.real-action-card {
+  display: grid;
+  gap: 7px;
+  align-content: end;
+  border: 1px solid rgba(238, 243, 245, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 9px;
+}
+
+.real-action-card.live {
+  border-color: rgba(68, 208, 123, 0.2);
+}
+
+.real-action-card strong {
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.real-action-note {
+  min-height: 42px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.3;
 }
 
 .real-position-form label {
   display: grid;
   gap: 5px;
-}
-
-.real-position-form label:first-child {
-  grid-column: 1 / -1;
 }
 
 .real-position-form span {
@@ -794,6 +823,11 @@ h2 {
 .real-position-form button[value="buy-live"] {
   border-color: rgba(68, 208, 123, 0.38);
   color: var(--green);
+}
+
+.real-position-form button[value="set"] {
+  border-color: rgba(240, 196, 106, 0.34);
+  color: var(--gold);
 }
 
 .add-stock-message {
@@ -2383,9 +2417,14 @@ h2 {
   .selected-position,
   .portfolio-health,
   .real-position-form,
+  .real-position-shared,
   .real-editor-section,
   .real-editor-section:first-child {
     grid-template-columns: 1fr;
+  }
+
+  .real-action-note {
+    min-height: 0;
   }
 
   .real-editor-section > strong {
