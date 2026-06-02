@@ -106,7 +106,8 @@ const elements = {
   apiKeyList: document.querySelector("#api-key-list"),
   apiKeyMessage: document.querySelector("#api-key-message"),
   portfolioSummary: document.querySelector("#portfolio-summary"),
-  realTransactionHistory: document.querySelector("#real-transaction-history"),
+  paperTradeHistory: document.querySelector("#paper-trade-history"),
+  realTradeHistory: document.querySelector("#real-trade-history"),
   comparisonPeriodLabel: document.querySelector("#comparison-period-label"),
   comparisonControls: document.querySelector("#comparison-controls"),
   comparisonAmount: document.querySelector("#comparison-amount"),
@@ -1491,7 +1492,7 @@ async function syncPaperAccount({ quiet = true } = {}) {
     } else {
       renderAccountSummary();
       renderPortfolioSummary();
-      renderRealTransactionHistory();
+      renderTradeHistoryPanels();
     }
   } catch (error) {
     if (!quiet) elements.marketStatus.textContent = `Paper sync failed: ${error.message}`;
@@ -2124,7 +2125,7 @@ function renderPortfolioSummary() {
       <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
     </div>
   `;
-  renderRealTransactionHistory();
+  renderTradeHistoryPanels();
 }
 
 function renderPortfolioHealth() {
@@ -2176,16 +2177,12 @@ function renderPortfolioHealth() {
   `;
 }
 
-function renderRealTransactionHistory() {
-  if (!elements.realTransactionHistory) return;
-
-  const transactions = (isRealMode() ? state.realTransactions : state.paperTransactions || []).slice(0, 8);
-  const modeLabel = isRealMode() ? "real" : "paper";
-  const canClearHistory = isRealMode() || !state.session?.access_token;
-  elements.realTransactionHistory.innerHTML = `
+function tradeHistoryMarkup(transactions, modeLabel, options = {}) {
+  const canClearHistory = options.canClear !== false;
+  return `
     <div class="history-head">
       <span>Recent ${modeLabel} trades</span>
-      <button type="button" data-action="clear-trade-history" ${
+      <button type="button" data-action="${escapeHtml(options.clearAction || "clear-trade-history")}" ${
         transactions.length && canClearHistory ? "" : "disabled"
       }>Clear</button>
     </div>
@@ -2199,7 +2196,7 @@ function renderRealTransactionHistory() {
                 const priceLabel = transaction.type === "set" ? money(transaction.avgCost) : money(transaction.price);
                 const totalLabel = money(transaction.total);
                 const realizedLabel =
-                  !isRealMode() && transaction.type === "sell"
+                  modeLabel === "paper" && transaction.type === "sell"
                     ? ` | Realized ${signedMoney(transaction.realizedPnl)}`
                     : "";
                 return `
@@ -2220,6 +2217,22 @@ function renderRealTransactionHistory() {
         : `<div class="empty-state mini">No ${modeLabel} trades recorded yet.</div>`
     }
   `;
+}
+
+function renderTradeHistoryPanels() {
+  if (!elements.paperTradeHistory || !elements.realTradeHistory) return;
+
+  const paperTransactions = (state.paperTransactions || []).slice(0, 8);
+  const realTransactions = (state.realTransactions || []).slice(0, 8);
+  elements.paperTradeHistory.hidden = isRealMode();
+  elements.realTradeHistory.hidden = !isRealMode();
+  elements.paperTradeHistory.innerHTML = tradeHistoryMarkup(paperTransactions, "paper", {
+    clearAction: "clear-paper-history",
+    canClear: !state.session?.access_token
+  });
+  elements.realTradeHistory.innerHTML = tradeHistoryMarkup(realTransactions, "real", {
+    clearAction: "clear-real-history"
+  });
 }
 
 function renderAccountSummary() {
@@ -3590,21 +3603,23 @@ elements.apiKeyList.addEventListener("click", async (event) => {
 elements.toggleDetails.addEventListener("click", () => setDetailsPanelVisibility(!state.showDetailsPanel));
 
 elements.watchlist.addEventListener("click", (event) => {
-  const clearHistoryButton = event.target.closest("[data-action='clear-trade-history']");
+  const clearHistoryButton = event.target.closest("[data-action='clear-paper-history'], [data-action='clear-real-history']");
   if (clearHistoryButton) {
-    if (isRealMode()) {
+    if (clearHistoryButton.dataset.action === "clear-real-history") {
       state.realTransactions = [];
     } else {
       state.paperTransactions = [];
     }
     saveGroups();
     renderPortfolioSummary();
-    elements.marketStatus.textContent = `${isRealMode() ? "Real" : "Paper"} transaction history cleared`;
+    elements.marketStatus.textContent = `${
+      clearHistoryButton.dataset.action === "clear-real-history" ? "Real" : "Paper"
+    } transaction history cleared`;
     return;
   }
 
   const keepSelection = event.target.closest(
-    ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary, .real-transaction-history, .stock-search"
+    ".stock-card, form, .panel-title, .group-tabs, .portfolio-summary, .trade-history, .stock-search"
   );
   if (!keepSelection) {
     clearSelectedCard();

@@ -1090,7 +1090,7 @@ h2 {
   font-size: 0.94rem;
 }
 
-.real-transaction-history {
+.trade-history {
   display: grid;
   gap: 8px;
   margin-top: 12px;
@@ -1100,7 +1100,7 @@ h2 {
   padding: 12px;
 }
 
-.real-transaction-history[hidden] {
+.trade-history[hidden] {
   display: none;
 }
 
