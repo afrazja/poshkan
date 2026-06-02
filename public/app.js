@@ -10,6 +10,7 @@ const REAL_REMOVED_SYMBOLS_KEY = "stock-dashboard-real-removed-symbols";
 const REAL_ACTIVE_TAB_KEY = "stock-dashboard-real-active-tab";
 const CASH_KEY = "stock-dashboard-paper-cash";
 const REALIZED_PNL_KEY = "stock-dashboard-realized-pnl";
+const PAPER_TRANSACTIONS_KEY = "stock-dashboard-paper-transactions";
 const ALERT_DIRECTIONS = new Set(["above", "below"]);
 const STARTING_CASH = 100000;
 
@@ -25,6 +26,7 @@ const state = {
   quotes: new Map(),
   cash: loadAccountCash(),
   realizedPnl: loadRealizedPnl(),
+  paperTransactions: loadPaperTransactions(),
   selected: null,
   creatingGroup: false,
   renamingGroupId: null,
@@ -253,6 +255,7 @@ function normalizeRealTransaction(transaction) {
     price,
     avgCost,
     total,
+    realizedPnl: Number(transaction?.realizedPnl) || 0,
     createdAt,
     source: String(transaction?.source || "")
   };
@@ -261,6 +264,15 @@ function normalizeRealTransaction(transaction) {
 function loadRealTransactions() {
   try {
     const saved = JSON.parse(localStorage.getItem(REAL_TRANSACTIONS_KEY));
+    return Array.isArray(saved) ? saved.map(normalizeRealTransaction).filter(Boolean).slice(0, 200) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadPaperTransactions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PAPER_TRANSACTIONS_KEY));
     return Array.isArray(saved) ? saved.map(normalizeRealTransaction).filter(Boolean).slice(0, 200) : [];
   } catch {
     return [];
@@ -452,6 +464,7 @@ function saveGroups() {
   localStorage.setItem(REAL_WATCHLIST_KEY, JSON.stringify(state.realWatchlist));
   localStorage.setItem(REAL_TRANSACTIONS_KEY, JSON.stringify(state.realTransactions));
   localStorage.setItem(REAL_REMOVED_SYMBOLS_KEY, JSON.stringify([...state.removedRealSymbols]));
+  localStorage.setItem(PAPER_TRANSACTIONS_KEY, JSON.stringify(state.paperTransactions));
   localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
   localStorage.setItem(GROUPS_KEY, JSON.stringify(state.groups));
   localStorage.setItem(ACTIVE_GROUP_KEY, state.activeGroupId);
@@ -469,6 +482,36 @@ function recordRealTransaction(transaction) {
   });
   if (!normalized) return;
   state.realTransactions = [normalized, ...(state.realTransactions || [])].slice(0, 200);
+}
+
+function recordPaperTransaction(transaction) {
+  const normalized = normalizeRealTransaction({
+    ...transaction,
+    id: `${Date.now()}-${cleanSymbol(transaction.symbol)}-${transaction.type}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: Date.now()
+  });
+  if (!normalized) return;
+  state.paperTransactions = [normalized, ...(state.paperTransactions || [])].slice(0, 200);
+}
+
+function paperTransactionsFromTrades(trades = []) {
+  return trades
+    .map((trade) =>
+      normalizeRealTransaction({
+        id: `${trade.created_at || Date.now()}-${cleanSymbol(trade.symbol)}-${trade.side}`,
+        symbol: trade.symbol,
+        type: trade.side,
+        shares: trade.shares,
+        price: trade.price,
+        total: Number(trade.shares) * Number(trade.price),
+        realizedPnl: trade.realized_pnl,
+        createdAt: trade.created_at ? Date.parse(trade.created_at) : Date.now(),
+        source: "paper-broker"
+      })
+    )
+    .filter(Boolean)
+    .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
+    .slice(0, 200);
 }
 
 function positionFor(symbol) {
@@ -1398,6 +1441,15 @@ async function syncPaperAccount({ quiet = true } = {}) {
 
     state.cash = Number(data.account?.cash) || state.cash;
     state.realizedPnl = Number(data.account?.realizedPnl) || 0;
+    const nextPaperTransactions = paperTransactionsFromTrades(data.trades || []);
+    if (nextPaperTransactions.length) {
+      const previousIds = (state.paperTransactions || []).map((transaction) => transaction.id).join("|");
+      const nextIds = nextPaperTransactions.map((transaction) => transaction.id).join("|");
+      if (previousIds !== nextIds) {
+        state.paperTransactions = nextPaperTransactions;
+        changed = true;
+      }
+    }
     firstGroup.portfolio ||= {};
     firstGroup.symbols ||= [];
     const firstBuyBySymbol = new Map();
@@ -1439,6 +1491,7 @@ async function syncPaperAccount({ quiet = true } = {}) {
     } else {
       renderAccountSummary();
       renderPortfolioSummary();
+      renderRealTransactionHistory();
     }
   } catch (error) {
     if (!quiet) elements.marketStatus.textContent = `Paper sync failed: ${error.message}`;
@@ -1851,6 +1904,15 @@ async function executeBrokerTrade(symbol, action, quantity) {
   if (state.selected === symbol) {
     state.selected = data.quote.symbol;
   }
+  recordPaperTransaction({
+    type: action,
+    symbol: data.quote.symbol,
+    shares: qty,
+    price: data.trade.price,
+    total: qty * data.trade.price,
+    realizedPnl: data.trade.realizedPnl,
+    source: "paper-broker"
+  });
   saveGroups();
   renderWatchlist();
   renderSelectedQuote();
@@ -1908,6 +1970,15 @@ function executeLocalTrade(symbol, action, quantity) {
   state.realizedPnl = Number(state.realizedPnl.toFixed(2));
   position.shares = Math.max(0, Number(position.shares.toFixed(6)));
   position.avgCost = Math.max(0, Number(position.avgCost.toFixed(4)));
+  recordPaperTransaction({
+    type: action,
+    symbol,
+    shares: qty,
+    price,
+    total: qty * price,
+    realizedPnl: tradeRealizedPnl,
+    source: "paper-local"
+  });
   saveGroups();
   if (state.supabase && state.session) {
     state.supabase
@@ -2107,17 +2178,16 @@ function renderPortfolioHealth() {
 
 function renderRealTransactionHistory() {
   if (!elements.realTransactionHistory) return;
-  elements.realTransactionHistory.hidden = !isRealMode();
-  if (!isRealMode()) {
-    elements.realTransactionHistory.innerHTML = "";
-    return;
-  }
 
-  const transactions = (state.realTransactions || []).slice(0, 8);
+  const transactions = (isRealMode() ? state.realTransactions : state.paperTransactions || []).slice(0, 8);
+  const modeLabel = isRealMode() ? "real" : "paper";
+  const canClearHistory = isRealMode() || !state.session?.access_token;
   elements.realTransactionHistory.innerHTML = `
     <div class="history-head">
-      <span>Recent real trades</span>
-      <button type="button" data-action="clear-real-history" ${transactions.length ? "" : "disabled"}>Clear</button>
+      <span>Recent ${modeLabel} trades</span>
+      <button type="button" data-action="clear-trade-history" ${
+        transactions.length && canClearHistory ? "" : "disabled"
+      }>Clear</button>
     </div>
     ${
       transactions.length
@@ -2128,6 +2198,10 @@ function renderRealTransactionHistory() {
                   transaction.type === "set" ? "Set position" : transaction.type === "buy" ? "Buy" : "Sell";
                 const priceLabel = transaction.type === "set" ? money(transaction.avgCost) : money(transaction.price);
                 const totalLabel = money(transaction.total);
+                const realizedLabel =
+                  !isRealMode() && transaction.type === "sell"
+                    ? ` | Realized ${signedMoney(transaction.realizedPnl)}`
+                    : "";
                 return `
                   <div class="history-row">
                     <div>
@@ -2136,14 +2210,14 @@ function renderRealTransactionHistory() {
                     </div>
                     <div>
                       <strong>${Number(transaction.shares).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong>
-                      <span>${priceLabel} | ${totalLabel}</span>
+                      <span>${priceLabel} | ${totalLabel}${realizedLabel}</span>
                     </div>
                   </div>
                 `;
               })
               .join("")}
           </div>`
-        : `<div class="empty-state mini">No real portfolio trades recorded yet.</div>`
+        : `<div class="empty-state mini">No ${modeLabel} trades recorded yet.</div>`
     }
   `;
 }
@@ -2311,6 +2385,7 @@ function renderComparisonTable() {
 function resetPaperAccount() {
   state.cash = STARTING_CASH;
   state.realizedPnl = 0;
+  state.paperTransactions = [];
   state.groups.forEach((group) => {
     group.portfolio = {};
   });
@@ -3515,12 +3590,16 @@ elements.apiKeyList.addEventListener("click", async (event) => {
 elements.toggleDetails.addEventListener("click", () => setDetailsPanelVisibility(!state.showDetailsPanel));
 
 elements.watchlist.addEventListener("click", (event) => {
-  const clearHistoryButton = event.target.closest("[data-action='clear-real-history']");
+  const clearHistoryButton = event.target.closest("[data-action='clear-trade-history']");
   if (clearHistoryButton) {
-    state.realTransactions = [];
+    if (isRealMode()) {
+      state.realTransactions = [];
+    } else {
+      state.paperTransactions = [];
+    }
     saveGroups();
     renderPortfolioSummary();
-    elements.marketStatus.textContent = "Real transaction history cleared";
+    elements.marketStatus.textContent = `${isRealMode() ? "Real" : "Paper"} transaction history cleared`;
     return;
   }
 
