@@ -59,6 +59,24 @@ button {
   margin-bottom: 16px;
 }
 
+.topbar-account {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.account-identity {
+  max-width: min(42vw, 260px);
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .brand-lockup {
   display: flex;
   align-items: center;

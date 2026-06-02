@@ -80,6 +80,7 @@ const elements = {
   authSubmit: document.querySelector("#auth-submit"),
   authMessage: document.querySelector("#auth-message"),
   dashboardShell: document.querySelector("#dashboard-shell"),
+  accountIdentity: document.querySelector("#account-identity"),
   signOut: document.querySelector("#sign-out"),
   form: document.querySelector("#add-stock-form"),
   realPositionForm: document.querySelector("#real-position-form"),
@@ -1392,10 +1393,12 @@ function renderAuthState() {
   const isSignedIn = Boolean(state.session?.user);
   elements.authPanel.hidden = isSignedIn;
   elements.dashboardShell.hidden = !isSignedIn;
+  elements.accountIdentity.textContent = isSignedIn ? userDisplayName(state.session.user) : "";
+}
 
-  if (isSignedIn) {
-    elements.marketStatus.textContent = `Signed in as ${state.session.user.email}`;
-  }
+function userDisplayName(user) {
+  const metadata = user?.user_metadata || {};
+  return metadata.username || metadata.name || user?.email || "";
 }
 
 function renderApiKeys(keys = []) {
