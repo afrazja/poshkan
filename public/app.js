@@ -2474,8 +2474,6 @@ function renderWatchlist() {
       const stats = positionStats(symbol);
       const ownedShares = Number(stats.shares) || 0;
       const ownedShareLabel = ownedShares.toLocaleString(undefined, { maximumFractionDigits: 4 });
-      const pnlDirection = stats.pnl >= 0 ? "up" : "down";
-      const alert = isPaperMode() ? alertFor(symbol) : { active: false, direction: "above", target: 0 };
       const status = isPaperMode() ? alertStatus(symbol) : { triggered: false, label: "No alert", className: "" };
       const isSelected = state.selected === symbol;
 
@@ -2506,96 +2504,6 @@ function renderWatchlist() {
           <button class="remove-stock" data-action="remove" data-symbol="${symbol}" title="Remove ${escapeHtml(
             symbol
           )}">x</button>
-          ${
-            isSelected
-              ? `
-                <div class="position-editor">
-                  <div>
-                    <span>Shares</span>
-                    <strong>${stats.shares ? stats.shares.toLocaleString() : "--"}</strong>
-                  </div>
-                  <div>
-                    <span>Avg cost</span>
-                    <strong>${stats.avgCost ? money(stats.avgCost) : "--"}</strong>
-                  </div>
-                  <div class="position-pnl">
-                    <span>Value ${money(stats.value)}</span>
-                    <strong class="${pnlDirection}">${signedMoney(stats.pnl)} (${signed(stats.pnlPercent, "%")})</strong>
-                  </div>
-                </div>
-                ${
-                  isPaperMode()
-                    ? `
-                <div class="trade-editor">
-                  <label>
-                    <span>Paper trade</span>
-                    <input type="number" min="0" step="0.0001" inputmode="decimal" data-trade-qty data-symbol="${symbol}" placeholder="Shares" />
-                  </label>
-                  <button type="button" data-trade-action="buy" data-symbol="${symbol}">Buy</button>
-                  <button type="button" data-trade-action="sell" data-symbol="${symbol}">Sell</button>
-                </div>
-                    `
-                    : `
-                <div class="real-editor">
-                  <div class="real-editor-section">
-                    <strong>Add existing holding</strong>
-                    <label>
-                      <span>Shares</span>
-                      <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
-                    </label>
-                    <label>
-                      <span>Average cost</span>
-                      <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
-                    </label>
-                    <button type="button" data-real-action="save" data-symbol="${symbol}">Save holding</button>
-                  </div>
-                  <div class="real-editor-section">
-                    <strong>Buy or sell transaction</strong>
-                    <label>
-                      <span>Shares</span>
-                      <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
-                    </label>
-                    <label>
-                      <span>Trade price</span>
-                      <input type="number" min="0" step="0.01" inputmode="decimal" data-real-trade-price data-symbol="${symbol}" value="${
-                        Number.isFinite(quote?.regularMarketPrice) ? Number(quote.regularMarketPrice).toFixed(2) : ""
-                      }" placeholder="Price" />
-                    </label>
-                    <button type="button" data-real-trade-action="buy" data-symbol="${symbol}">Buy</button>
-                    <button type="button" data-real-trade-action="sell" data-symbol="${symbol}">Sell</button>
-                  </div>
-                </div>
-                    `
-                }
-                ${
-                  isPaperMode()
-                    ? `
-                <div class="alert-editor">
-                  <label class="alert-switch">
-                    <span>Alert</span>
-                    <input type="checkbox" data-alert-field="active" data-symbol="${symbol}" ${alert.active ? "checked" : ""} />
-                    <i aria-hidden="true"></i>
-                  </label>
-                  <label>
-                    <span>Condition</span>
-                    <select data-alert-field="direction" data-symbol="${symbol}">
-                      <option value="above" ${alert.direction === "above" ? "selected" : ""}>Above</option>
-                      <option value="below" ${alert.direction === "below" ? "selected" : ""}>Below</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Target</span>
-                    <input type="number" min="0" step="0.01" inputmode="decimal" data-alert-field="target" data-symbol="${symbol}" value="${
-                      alert.target || ""
-                    }" />
-                  </label>
-                </div>
-                    `
-                    : ""
-                }
-              `
-              : ""
-          }
         </article>
       `;
     })
@@ -2636,6 +2544,7 @@ function renderSelectedQuote() {
   const pnlDirection = stats.pnl >= 0 ? "up" : "down";
   const selectedAlert = isPaperMode() ? alertFor(quote.symbol) : { active: false };
   const selectedAlertStatus = isPaperMode() ? alertStatus(quote.symbol) : { label: "--", className: "" };
+  const symbol = cleanSymbol(quote.symbol);
   elements.selectedPosition.innerHTML = `
     <div>
       <span>Shares</span>
@@ -2659,6 +2568,74 @@ function renderSelectedQuote() {
         isRealMode() ? "Real tracker" : selectedAlert.active ? selectedAlertStatus.label : "--"
       }</strong>
     </div>
+    <section class="selected-actions" aria-label="Selected stock actions">
+      <div class="selected-actions-head">
+        <strong>${isRealMode() ? "Real portfolio actions" : "Paper trading actions"}</strong>
+        <span>${isRealMode() ? "Edit holdings or record a real transaction for this symbol." : "Buy, sell, or set an alert for this paper position."}</span>
+      </div>
+      ${
+        isPaperMode()
+          ? `
+            <div class="trade-editor">
+              <label>
+                <span>Paper trade</span>
+                <input type="number" min="0" step="0.0001" inputmode="decimal" data-trade-qty data-symbol="${symbol}" placeholder="Shares" />
+              </label>
+              <button type="button" data-trade-action="buy" data-symbol="${symbol}">Buy</button>
+              <button type="button" data-trade-action="sell" data-symbol="${symbol}">Sell</button>
+            </div>
+            <div class="alert-editor">
+              <label class="alert-switch">
+                <span>Alert</span>
+                <input type="checkbox" data-alert-field="active" data-symbol="${symbol}" ${selectedAlert.active ? "checked" : ""} />
+                <i aria-hidden="true"></i>
+              </label>
+              <label>
+                <span>Condition</span>
+                <select data-alert-field="direction" data-symbol="${symbol}">
+                  <option value="above" ${selectedAlert.direction === "above" ? "selected" : ""}>Above</option>
+                  <option value="below" ${selectedAlert.direction === "below" ? "selected" : ""}>Below</option>
+                </select>
+              </label>
+              <label>
+                <span>Target</span>
+                <input type="number" min="0" step="0.01" inputmode="decimal" data-alert-field="target" data-symbol="${symbol}" value="${selectedAlert.target || ""}" />
+              </label>
+            </div>
+          `
+          : `
+            <div class="real-editor">
+              <div class="real-editor-section">
+                <strong>Add existing holding</strong>
+                <label>
+                  <span>Shares</span>
+                  <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
+                </label>
+                <label>
+                  <span>Average cost</span>
+                  <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
+                </label>
+                <button type="button" data-real-action="save" data-symbol="${symbol}">Save holding</button>
+              </div>
+              <div class="real-editor-section">
+                <strong>Buy or sell transaction</strong>
+                <label>
+                  <span>Shares</span>
+                  <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
+                </label>
+                <label>
+                  <span>Trade price</span>
+                  <input type="number" min="0" step="0.01" inputmode="decimal" data-real-trade-price data-symbol="${symbol}" value="${
+                    Number.isFinite(quote?.regularMarketPrice) ? Number(quote.regularMarketPrice).toFixed(2) : ""
+                  }" placeholder="Price" />
+                </label>
+                <button type="button" data-real-trade-action="buy" data-symbol="${symbol}">Buy</button>
+                <button type="button" data-real-trade-action="sell" data-symbol="${symbol}">Sell</button>
+              </div>
+            </div>
+          `
+      }
+    </section>
   `;
 }
 
@@ -3695,37 +3672,49 @@ elements.alertTray.addEventListener("click", (event) => {
   renderAlertTray();
 });
 
-elements.stockList.addEventListener("click", async (event) => {
-  if (state.draggingSymbol) return;
+async function handleSelectedStockActionClick(event) {
   const button = event.target.closest("button");
-  if (!button) return;
+  if (!button) return false;
 
   if (button.dataset.tradeAction) {
-    if (isRealMode()) return;
+    if (isRealMode()) return true;
     const symbol = cleanSymbol(button.dataset.symbol);
-    const card = button.closest(".stock-card");
-    const qty = card?.querySelector("input[data-trade-qty]")?.value;
+    const actionRoot = button.closest(".selected-actions, .stock-card");
+    const qty = actionRoot?.querySelector("input[data-trade-qty]")?.value;
     executeTrade(symbol, button.dataset.tradeAction, qty);
-    return;
+    return true;
   }
 
   if (button.dataset.realTradeAction) {
     const symbol = cleanSymbol(button.dataset.symbol);
-    const card = button.closest(".stock-card");
-    const qty = card?.querySelector("input[data-real-trade-qty]")?.value;
-    const price = card?.querySelector("input[data-real-trade-price]")?.value;
+    const actionRoot = button.closest(".selected-actions, .stock-card");
+    const qty = actionRoot?.querySelector("input[data-real-trade-qty]")?.value;
+    const price = actionRoot?.querySelector("input[data-real-trade-price]")?.value;
     await executeRealTrade(symbol, button.dataset.realTradeAction, qty, price);
-    return;
+    return true;
   }
 
   if (button.dataset.realAction === "save") {
     const symbol = cleanSymbol(button.dataset.symbol);
-    const card = button.closest(".stock-card");
-    const shares = card?.querySelector('[data-real-field="shares"]')?.value;
-    const avgCost = card?.querySelector('[data-real-field="avgCost"]')?.value;
+    const actionRoot = button.closest(".selected-actions, .stock-card");
+    const shares = actionRoot?.querySelector('[data-real-field="shares"]')?.value;
+    const avgCost = actionRoot?.querySelector('[data-real-field="avgCost"]')?.value;
     await addOrUpdateRealPosition(symbol, shares, avgCost);
-    return;
+    return true;
   }
+
+  return false;
+}
+
+elements.selectedPosition.addEventListener("click", async (event) => {
+  await handleSelectedStockActionClick(event);
+});
+
+elements.stockList.addEventListener("click", async (event) => {
+  if (state.draggingSymbol) return;
+  if (await handleSelectedStockActionClick(event)) return;
+  const button = event.target.closest("button");
+  if (!button) return;
 
   const symbol = button.dataset.symbol;
   if (button.dataset.action === "remove") {
@@ -3832,29 +3821,37 @@ elements.stockList.addEventListener("dragend", () => {
   state.draggingSymbol = null;
 });
 
-elements.stockList.addEventListener("change", (event) => {
+function handleAlertFieldChange(event) {
   const alertInput = event.target.closest("[data-alert-field]");
-  if (alertInput) {
-    const symbol = cleanSymbol(alertInput.dataset.symbol);
-    const field = alertInput.dataset.alertField;
-    if (!symbol || !["active", "direction", "target"].includes(field)) return;
+  if (!alertInput) return false;
 
-    const alert = alertFor(symbol);
-    if (field === "active") {
-      alert.active = alertInput.checked;
-    } else if (field === "direction") {
-      alert.direction = ALERT_DIRECTIONS.has(alertInput.value) ? alertInput.value : "above";
-    } else {
-      alert.target = Math.max(0, Number(alertInput.value) || 0);
-    }
+  const symbol = cleanSymbol(alertInput.dataset.symbol);
+  const field = alertInput.dataset.alertField;
+  if (!symbol || !["active", "direction", "target"].includes(field)) return false;
 
-    state.firedAlerts.delete(alertKey(activeGroup().id, symbol, alert));
-    saveGroups();
-    evaluateAlerts([state.quotes.get(symbol)].filter(Boolean));
-    renderWatchlist();
-    renderSelectedQuote();
-    return;
+  const alert = alertFor(symbol);
+  if (field === "active") {
+    alert.active = alertInput.checked;
+  } else if (field === "direction") {
+    alert.direction = ALERT_DIRECTIONS.has(alertInput.value) ? alertInput.value : "above";
+  } else {
+    alert.target = Math.max(0, Number(alertInput.value) || 0);
   }
+
+  state.firedAlerts.delete(alertKey(activeGroup().id, symbol, alert));
+  saveGroups();
+  evaluateAlerts([state.quotes.get(symbol)].filter(Boolean));
+  renderWatchlist();
+  renderSelectedQuote();
+  return true;
+}
+
+elements.selectedPosition.addEventListener("change", (event) => {
+  handleAlertFieldChange(event);
+});
+
+elements.stockList.addEventListener("change", (event) => {
+  handleAlertFieldChange(event);
 });
 
 elements.periodButtons.forEach((button) => {
