@@ -448,7 +448,7 @@ button {
 
 .account-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -1307,6 +1307,54 @@ h2 {
 
 .settings-page .api-key-panel {
   margin-bottom: 0;
+}
+
+.settings-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(24, 28, 32, 0.82);
+  padding: 13px;
+}
+
+.settings-card.danger {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.settings-card span,
+.settings-card small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.settings-card strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.96rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-card button {
+  grid-row: 1 / span 3;
+  grid-column: 2;
+  min-height: 38px;
+  border: 1px solid rgba(255, 107, 107, 0.38);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--red);
+  font-weight: 850;
+  padding: 0 12px;
 }
 
 .comparison-page-head {
@@ -2262,6 +2310,10 @@ h2 {
     grid-template-columns: 1fr 1fr;
   }
 
+  .settings-overview {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .api-key-panel,
   .api-key-row {
     grid-template-columns: 1fr;
@@ -2312,6 +2364,15 @@ h2 {
 
   .comparison-page-actions {
     flex-direction: column;
+  }
+
+  .settings-card.danger {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-card button {
+    grid-row: auto;
+    grid-column: auto;
   }
 
   .position-editor,
@@ -2490,6 +2551,10 @@ h2 {
 
   .real-action-note {
     min-height: 0;
+  }
+
+  .settings-overview {
+    grid-template-columns: 1fr;
   }
 
   .real-editor-section > strong {

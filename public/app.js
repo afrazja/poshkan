@@ -111,6 +111,7 @@ const elements = {
   backFromSettings: document.querySelector("#back-from-settings"),
   refreshHistoryPage: document.querySelector("#refresh-history"),
   accountSummary: document.querySelector("#account-summary"),
+  settingsOverview: document.querySelector("#settings-overview"),
   apiKeyPanel: document.querySelector("#api-key-panel"),
   apiKeyCreate: document.querySelector("#create-api-key"),
   apiKeySecret: document.querySelector("#api-key-secret"),
@@ -1851,6 +1852,9 @@ function renderComparisonPageVisibility() {
   if (state.historyPageOpen) {
     renderTradeHistoryPanels();
   }
+  if (state.settingsPageOpen) {
+    renderSettingsPage();
+  }
   renderMobileNav();
 }
 
@@ -2258,6 +2262,7 @@ async function clearTradeHistory(action) {
 
 function renderAccountSummary() {
   renderPortfolioMode();
+  renderSettingsPage();
   if (isRealMode()) {
     const totals = portfolioTotals(Object.keys(state.realPositions));
     const pnlClass = totals.pnl >= 0 ? "up" : "down";
@@ -2309,7 +2314,46 @@ function renderAccountSummary() {
       <span>Total P/L</span>
       <strong class="${totalClass}">${signedMoney(totals.totalPnl)}</strong>
     </div>
-    <button type="button" id="reset-paper-account">Reset</button>
+  `;
+}
+
+function renderSettingsPage() {
+  if (!elements.settingsOverview) return;
+
+  const user = state.session?.user;
+  const displayName = user ? userDisplayName(user) : "Signed out";
+  const email = user?.email || "--";
+  const cloudStatus = state.cloudSaving ? "Saving changes" : state.cloudReady ? "Cloud sync ready" : "Sync starting";
+  const apiStatus = state.paperApiKeysEnabled ? "Claude paper API enabled" : "Server key not configured";
+  const modeLabel = isRealMode() ? "Real Portfolio Tracker" : "Paper Trading Practice";
+
+  elements.settingsOverview.innerHTML = `
+    <article class="settings-card">
+      <span>Signed in account</span>
+      <strong>${escapeHtml(displayName)}</strong>
+      <small>${escapeHtml(email)}</small>
+    </article>
+    <article class="settings-card">
+      <span>Current workspace</span>
+      <strong>${escapeHtml(modeLabel)}</strong>
+      <small>${isRealMode() ? "Real holdings and watchlist are separate from paper trades." : "Virtual money trades and Claude paper trades stay here."}</small>
+    </article>
+    <article class="settings-card">
+      <span>Data sync</span>
+      <strong>${escapeHtml(cloudStatus)}</strong>
+      <small>Supabase saves watchlists, positions, alerts, and history when available.</small>
+    </article>
+    <article class="settings-card">
+      <span>Claude API</span>
+      <strong>${escapeHtml(apiStatus)}</strong>
+      <small>Keys only allow paper portfolio actions.</small>
+    </article>
+    <article class="settings-card danger">
+      <span>Paper account</span>
+      <strong>Reset virtual portfolio</strong>
+      <small>Clears paper holdings and resets cash to ${money(STARTING_CASH)}.</small>
+      <button type="button" id="reset-paper-account">Reset paper account</button>
+    </article>
   `;
 }
 
@@ -3629,7 +3673,7 @@ elements.comparisonRefresh.addEventListener("click", () => {
   refreshPerformance();
 });
 
-elements.accountSummary.addEventListener("click", (event) => {
+elements.settingsOverview.addEventListener("click", (event) => {
   if (event.target.closest("#reset-paper-account")) {
     resetPaperAccount();
   }
