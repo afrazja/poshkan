@@ -411,7 +411,8 @@ button {
 }
 
 .auth-actions button,
-.sign-out {
+.sign-out,
+.topbar-button {
   height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -439,7 +440,8 @@ button {
   color: var(--green);
 }
 
-.sign-out {
+.sign-out,
+.topbar-button {
   padding: 0 14px;
   color: var(--muted);
 }
@@ -1202,7 +1204,8 @@ h2 {
 }
 
 .comparison-page,
-.history-page {
+.history-page,
+.settings-page {
   display: grid;
   gap: 14px;
   border: 1px solid var(--line);
@@ -1217,6 +1220,10 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-items: start;
+}
+
+.settings-page .api-key-panel {
+  margin-bottom: 0;
 }
 
 .comparison-page-head {
@@ -2270,7 +2277,8 @@ h2 {
   .watchlist,
   .details,
   .comparison-page,
-  .history-page {
+  .history-page,
+  .settings-page {
     padding: 14px;
   }
 
@@ -2326,7 +2334,8 @@ h2 {
   }
 
   .comparison-page,
-  .history-page {
+  .history-page,
+  .settings-page {
     padding: 14px 10px;
   }
 }

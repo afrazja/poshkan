@@ -114,6 +114,7 @@
         </div>
         <div class="topbar-account">
           <span id="account-identity" class="account-identity"></span>
+          <button id="open-settings" class="topbar-button" type="button">Settings</button>
           <button id="sign-out" class="sign-out" type="button">Sign out</button>
         </div>
       </section>
@@ -122,17 +123,6 @@
       <section class="portfolio-mode" aria-label="Portfolio mode">
         <button type="button" class="active" data-portfolio-mode="paper">Paper Trading</button>
         <button type="button" data-portfolio-mode="real">Real Portfolio</button>
-      </section>
-      <section id="api-key-panel" class="api-key-panel" aria-live="polite">
-        <div>
-          <p class="eyebrow">Claude paper API</p>
-          <h2>Paper trading key</h2>
-          <span>Generate a limited key Claude can use for fake portfolio trades.</span>
-        </div>
-        <button id="create-api-key" type="button">Generate key</button>
-        <div id="api-key-secret" class="api-key-secret" hidden></div>
-        <div id="api-key-list" class="api-key-list"></div>
-        <p id="api-key-message" class="api-key-message"></p>
       </section>
 
       <section class="status-row" aria-live="polite">
@@ -320,6 +310,30 @@
           <div id="paper-trade-history" class="trade-history paper-trade-history"></div>
           <div id="real-trade-history" class="trade-history real-trade-history"></div>
         </div>
+      </section>
+
+      <section id="settings-page" class="settings-page" aria-label="Settings" hidden>
+        <div class="comparison-page-head">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2>Account and Integrations</h2>
+            <span>Manage features that are useful sometimes but should not crowd the stock dashboard.</span>
+          </div>
+          <div class="comparison-page-actions">
+            <button id="back-from-settings" type="button">Back to cards</button>
+          </div>
+        </div>
+        <section id="api-key-panel" class="api-key-panel" aria-live="polite">
+          <div>
+            <p class="eyebrow">Claude paper API</p>
+            <h2>Paper trading key</h2>
+            <span>Generate a limited key Claude can use for fake portfolio trades.</span>
+          </div>
+          <button id="create-api-key" type="button">Generate key</button>
+          <div id="api-key-secret" class="api-key-secret" hidden></div>
+          <div id="api-key-list" class="api-key-list"></div>
+          <p id="api-key-message" class="api-key-message"></p>
+        </section>
       </section>
 
       <nav class="mobile-nav" aria-label="Mobile app navigation">

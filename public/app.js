@@ -42,6 +42,7 @@ const state = {
   comparisonLoading: false,
   comparisonPageOpen: false,
   historyPageOpen: false,
+  settingsPageOpen: false,
   stockSearch: "",
   performance: new Map(),
   chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
@@ -100,10 +101,13 @@ const elements = {
   workspace: document.querySelector(".workspace"),
   comparisonPage: document.querySelector("#comparison-page"),
   historyPage: document.querySelector("#history-page"),
+  settingsPage: document.querySelector("#settings-page"),
   openComparison: document.querySelector("#open-comparison"),
   openHistory: document.querySelector("#open-history"),
+  openSettings: document.querySelector("#open-settings"),
   backToCards: document.querySelector("#back-to-cards"),
   backFromHistory: document.querySelector("#back-from-history"),
+  backFromSettings: document.querySelector("#back-from-settings"),
   refreshHistoryPage: document.querySelector("#refresh-history"),
   accountSummary: document.querySelector("#account-summary"),
   apiKeyPanel: document.querySelector("#api-key-panel"),
@@ -1831,9 +1835,10 @@ function renderSectionVisibility() {
 }
 
 function renderComparisonPageVisibility() {
-  elements.workspace.hidden = state.comparisonPageOpen || state.historyPageOpen;
+  elements.workspace.hidden = state.comparisonPageOpen || state.historyPageOpen || state.settingsPageOpen;
   elements.comparisonPage.hidden = !state.comparisonPageOpen;
   elements.historyPage.hidden = !state.historyPageOpen;
+  elements.settingsPage.hidden = !state.settingsPageOpen;
   if (state.comparisonPageOpen) {
     renderComparisonTable();
   }
@@ -1848,7 +1853,7 @@ function renderMobileNav() {
     const target = button.dataset.mobileNav;
     const active =
       (target === "table" && state.comparisonPageOpen) ||
-      (!state.comparisonPageOpen && !state.historyPageOpen && target === state.portfolioMode);
+      (!state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen && target === state.portfolioMode);
     button.classList.toggle("active", active);
     button.classList.toggle("has-alerts", target === "alerts" && state.alertEvents.length > 0);
   });
@@ -3128,6 +3133,7 @@ function setPortfolioMode(mode) {
   state.portfolioMode = mode === "real" ? "real" : "paper";
   state.comparisonPageOpen = false;
   state.historyPageOpen = false;
+  state.settingsPageOpen = false;
   clearStockSearch();
   state.selected = currentSymbols()[0] || null;
   state.performance.clear();
@@ -3256,6 +3262,10 @@ elements.mobileNavButtons.forEach((button) => {
     const target = button.dataset.mobileNav;
     if (target === "paper" || target === "real") {
       setPortfolioMode(target);
+      state.comparisonPageOpen = false;
+      state.historyPageOpen = false;
+      state.settingsPageOpen = false;
+      renderComparisonPageVisibility();
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -3263,6 +3273,7 @@ elements.mobileNavButtons.forEach((button) => {
     if (target === "table") {
       state.comparisonPageOpen = true;
       state.historyPageOpen = false;
+      state.settingsPageOpen = false;
       renderComparisonPageVisibility();
       refreshPerformance({ quiet: true });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3503,6 +3514,7 @@ elements.refresh.addEventListener("click", () => refreshQuotes());
 elements.openComparison.addEventListener("click", () => {
   state.comparisonPageOpen = true;
   state.historyPageOpen = false;
+  state.settingsPageOpen = false;
   renderComparisonPageVisibility();
   if (!state.performance.size) refreshPerformance();
 });
@@ -3510,6 +3522,14 @@ elements.openComparison.addEventListener("click", () => {
 elements.openHistory.addEventListener("click", () => {
   state.historyPageOpen = true;
   state.comparisonPageOpen = false;
+  state.settingsPageOpen = false;
+  renderComparisonPageVisibility();
+});
+
+elements.openSettings.addEventListener("click", () => {
+  state.settingsPageOpen = true;
+  state.comparisonPageOpen = false;
+  state.historyPageOpen = false;
   renderComparisonPageVisibility();
 });
 
@@ -3520,6 +3540,11 @@ elements.backToCards.addEventListener("click", () => {
 
 elements.backFromHistory.addEventListener("click", () => {
   state.historyPageOpen = false;
+  renderComparisonPageVisibility();
+});
+
+elements.backFromSettings.addEventListener("click", () => {
+  state.settingsPageOpen = false;
   renderComparisonPageVisibility();
 });
 
@@ -3746,6 +3771,8 @@ elements.comparisonTable.addEventListener("click", async (event) => {
   if (!button) return;
   await selectStock(cleanSymbol(button.dataset.symbol));
   state.comparisonPageOpen = false;
+  state.historyPageOpen = false;
+  state.settingsPageOpen = false;
   renderComparisonPageVisibility();
 });
 
