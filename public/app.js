@@ -43,6 +43,7 @@ const state = {
   comparisonPageOpen: false,
   historyPageOpen: false,
   settingsPageOpen: false,
+  mobileDetailOpen: false,
   stockSearch: "",
   performance: new Map(),
   chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
@@ -106,6 +107,7 @@ const elements = {
   historyPage: document.querySelector("#history-page"),
   settingsPage: document.querySelector("#settings-page"),
   backToCards: document.querySelector("#back-to-cards"),
+  backToWatchlist: document.querySelector("#back-to-watchlist"),
   backFromHistory: document.querySelector("#back-from-history"),
   backFromSettings: document.querySelector("#back-from-settings"),
   refreshHistoryPage: document.querySelector("#refresh-history"),
@@ -1942,6 +1944,7 @@ function renderChartControls() {
 
 function renderSectionVisibility() {
   elements.workspace.classList.toggle("details-collapsed", !state.showDetailsPanel);
+  elements.workspace.classList.toggle("mobile-detail-open", state.mobileDetailOpen);
   elements.details.hidden = !state.showDetailsPanel;
   elements.toggleDetails.innerHTML = state.showDetailsPanel ? "&rsaquo;" : "&lsaquo;";
   elements.toggleDetails.setAttribute(
@@ -2006,6 +2009,7 @@ function navigateMain(target, { scroll = false } = {}) {
     state.comparisonPageOpen = false;
     state.historyPageOpen = false;
     state.settingsPageOpen = false;
+    state.mobileDetailOpen = false;
   } else if (target === "table") {
     state.comparisonPageOpen = true;
     state.historyPageOpen = false;
@@ -3237,9 +3241,15 @@ function renderChart() {
 
 async function selectStock(symbol) {
   state.selected = symbol;
+  const shouldOpenMobileDetail = window.matchMedia?.("(max-width: 880px)")?.matches;
+  if (shouldOpenMobileDetail) {
+    state.mobileDetailOpen = true;
+    state.showDetailsPanel = true;
+    renderSectionVisibility();
+  }
   renderWatchlist();
   renderSelectedQuote();
-  if (!state.showDetailsPanel) {
+  if (!state.showDetailsPanel && !state.mobileDetailOpen) {
     elements.marketStatus.textContent = `Selected ${symbol}. Use the side arrow to open chart, news, and trading controls.`;
   }
   await Promise.all([refreshHistory(symbol), refreshNews(symbol)]);
@@ -3760,6 +3770,13 @@ elements.backToCards.addEventListener("click", () => {
   navigateMain("cards");
 });
 
+elements.backToWatchlist.addEventListener("click", () => {
+  state.mobileDetailOpen = false;
+  renderSectionVisibility();
+  renderMobileNav();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
 elements.backFromHistory.addEventListener("click", () => {
   navigateMain("cards");
 });
@@ -4033,11 +4050,11 @@ elements.comparisonTable.addEventListener("click", async (event) => {
 
   const button = event.target.closest("button[data-action='select']");
   if (!button) return;
-  await selectStock(cleanSymbol(button.dataset.symbol));
   state.comparisonPageOpen = false;
   state.historyPageOpen = false;
   state.settingsPageOpen = false;
   renderComparisonPageVisibility();
+  await selectStock(cleanSymbol(button.dataset.symbol));
 });
 
 elements.stockList.addEventListener("dragstart", (event) => {
