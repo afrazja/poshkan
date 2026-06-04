@@ -183,7 +183,7 @@ if (!VALID_CUSTOM_UNITS.has(state.comparisonUnit)) {
   state.comparisonUnit = "days";
 }
 
-if (!["performance", "value", "pnl", "price", "symbol", "dayChange", "shares"].includes(state.comparisonSort)) {
+if (!["performance", "value", "pnl", "pnlPercent", "price", "symbol", "dayChange", "shares"].includes(state.comparisonSort)) {
   state.comparisonSort = "performance";
 }
 
@@ -2594,6 +2594,7 @@ function renderComparisonTable() {
           <th><button type="button" data-sort-key="shares">Shares ${sortMark("shares")}</button></th>
           <th><button type="button" data-sort-key="value">Value ${sortMark("value")}</button></th>
           <th><button type="button" data-sort-key="pnl">P/L ${sortMark("pnl")}</button></th>
+          <th><button type="button" data-sort-key="pnlPercent">P/L % ${sortMark("pnlPercent")}</button></th>
         </tr>
       </thead>
       <tbody>
@@ -2612,6 +2613,7 @@ function renderComparisonTable() {
                 <td>${row.shares ? row.shares.toLocaleString() : "--"}</td>
                 <td>${money(row.value)}</td>
                 <td class="${pnlClass}">${signedMoney(row.pnl)}</td>
+                <td class="${pnlClass}">${row.shares ? signed(row.pnlPercent, "%") : "--"}</td>
               </tr>
             `;
           })
