@@ -2710,7 +2710,7 @@ function renderWatchlist() {
       const quoteState = quoteStatus(symbol, quote);
       const change = quote?.regularMarketChange;
       const changePercent = quote?.regularMarketChangePercent;
-      const direction = change >= 0 ? "up" : "down";
+      const direction = Number.isFinite(change) ? (change >= 0 ? "up" : "down") : "neutral";
       const marketState = quote?.marketState || "WAIT";
       const stats = positionStats(symbol);
       const ownedShares = Number(stats.shares) || 0;
@@ -2719,7 +2719,7 @@ function renderWatchlist() {
       const isSelected = state.selected === symbol;
 
       return `
-        <article class="stock-card ${isSelected ? "active expanded" : "compact"} ${
+        <article class="stock-card ${isSelected ? "active expanded" : "compact"} ${direction} ${
           status.triggered ? "alert-hit" : ""
         }" data-symbol="${symbol}" draggable="${isPaperMode()}">
           <button class="stock-main" data-action="select" data-symbol="${symbol}">

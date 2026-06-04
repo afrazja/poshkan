@@ -2284,6 +2284,12 @@ h2 {
   box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.08);
 }
 
+.change-badge.neutral {
+  color: var(--muted);
+  background: rgba(238, 243, 245, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(238, 243, 245, 0.06);
+}
+
 .up {
   color: var(--green);
 }
@@ -3012,6 +3018,35 @@ h2 {
     padding: 12px;
   }
 
+  .watchlist {
+    padding-bottom: 76px;
+  }
+
+  .stock-search {
+    position: sticky;
+    top: 8px;
+    z-index: 12;
+    border: 1px solid rgba(238, 243, 245, 0.1);
+    border-radius: 8px;
+    background: rgba(18, 21, 24, 0.96);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+    padding: 8px;
+    backdrop-filter: blur(12px);
+  }
+
+  .stock-search span {
+    display: none;
+  }
+
+  .stock-search input {
+    height: 38px;
+  }
+
+  .stock-list {
+    gap: 6px;
+    margin-top: 10px;
+  }
+
   .account-summary {
     grid-template-columns: 1fr;
     gap: 8px;
@@ -3093,31 +3128,108 @@ h2 {
     text-align: left;
   }
 
-  .stock-card {
-    grid-template-columns: minmax(0, 1fr) 28px;
-    gap: 10px;
-    padding: 12px;
+  .stock-card,
+  .stock-card.compact {
+    min-height: 54px;
+    grid-template-columns: minmax(68px, 1fr) minmax(104px, auto) 56px 24px;
+    align-items: center;
+    gap: 6px;
+    border-left-width: 4px;
+    padding: 7px 8px;
+    cursor: pointer;
+  }
+
+  .stock-card.up {
+    border-left-color: rgba(68, 208, 123, 0.78);
+  }
+
+  .stock-card.down {
+    border-left-color: rgba(255, 107, 107, 0.78);
+  }
+
+  .stock-card.neutral {
+    border-left-color: rgba(238, 243, 245, 0.28);
+  }
+
+  .stock-card.active {
+    min-height: 118px;
+    grid-template-columns: minmax(0, 1fr) auto 28px;
+    align-items: start;
+    gap: 9px;
+    padding: 11px;
   }
 
   .stock-card .stock-title {
     gap: 6px;
+    flex-wrap: nowrap;
   }
 
   .stock-card .stock-title strong {
-    font-size: 1.05rem;
-    padding: 4px 7px;
+    border: 0;
+    background: transparent;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
   }
 
-  .stock-name {
-    font-size: 0.88rem;
+  .stock-card.compact .market-pill,
+  .stock-card.compact .quote-status,
+  .stock-card.compact .stock-name,
+  .stock-card.compact .card-stats {
+    display: none;
+  }
+
+  .stock-card.active .stock-title {
+    flex-wrap: wrap;
+  }
+
+  .stock-card.active .stock-title strong {
+    border: 1px solid rgba(var(--mode-accent-rgb), 0.36);
+    background:
+      linear-gradient(135deg, rgba(var(--mode-accent-rgb), 0.18), rgba(255, 255, 255, 0.025)),
+      rgba(255, 255, 255, 0.035);
+    font-size: 1.08rem;
+    padding: 5px 8px;
+  }
+
+  .stock-card.active .stock-name {
+    display: block;
+    font-size: 0.86rem;
   }
 
   .stock-card .quote-meta {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-height: 44px;
-    justify-items: start;
-    text-align: left;
+    grid-column: auto;
+    grid-row: auto;
+    min-height: 0;
+    justify-items: end;
+    align-content: center;
+    gap: 4px;
+    text-align: right;
+  }
+
+  .stock-card .quote-meta strong {
+    font-size: 0.96rem;
+  }
+
+  .stock-card .change-badge {
+    max-width: 104px;
+    overflow: hidden;
+    padding: 3px 6px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.68rem;
+  }
+
+  .stock-card.active .quote-meta {
+    align-content: start;
+  }
+
+  .stock-card.active .quote-meta strong {
+    font-size: 1.16rem;
+  }
+
+  .stock-card.active .change-badge {
+    max-width: none;
   }
 
   .stock-card .card-stats {
@@ -3128,8 +3240,52 @@ h2 {
     max-width: 100%;
   }
 
+  .stock-card.compact .quantity-label,
   .stock-card .quantity-label {
-    right: 46px;
+    position: static;
+    display: grid;
+    justify-items: end;
+    gap: 1px;
+    min-width: 0;
+    color: #fff;
+    pointer-events: none;
+    text-align: right;
+  }
+
+  .stock-card .quantity-label span {
+    color: var(--muted);
+    font-size: 0.58rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .stock-card .quantity-label strong {
+    max-width: 54px;
+    overflow: hidden;
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock-card.active .quantity-label {
+    position: absolute;
+    right: 42px;
+    bottom: 12px;
+  }
+
+  .stock-card .remove-stock {
+    position: static;
+    width: 24px;
+    height: 24px;
+    align-self: center;
+    justify-self: end;
+    font-size: 0.82rem;
+  }
+
+  .stock-card.active .remove-stock {
+    align-self: start;
   }
 
   .position-editor,
