@@ -1166,17 +1166,18 @@ async function loadCloudRealPositions(userId) {
     state.realPositionsCloudEnabled = true;
     state.realPositions = normalizePortfolio(
       Object.fromEntries(
-        (data || [])
-          .map((position) => [
-            cleanSymbol(position.symbol),
-            { shares: Number(position.shares) || 0, avgCost: Number(position.avg_cost) || 0 }
-          ])
-          .filter(([symbol]) => !state.removedRealSymbols.has(symbol))
+        (data || []).map((position) => [
+          cleanSymbol(position.symbol),
+          { shares: Number(position.shares) || 0, avgCost: Number(position.avg_cost) || 0 }
+        ])
       )
     );
     state.realWatchlist = [
       ...new Set((watchlistData || []).map((item) => cleanSymbol(item.symbol)).filter(Boolean))
-    ].filter((symbol) => !state.removedRealSymbols.has(symbol));
+    ];
+    [...Object.keys(state.realPositions), ...state.realWatchlist].forEach((symbol) => {
+      state.removedRealSymbols.delete(symbol);
+    });
     try {
       const { data: transactionData, error: transactionError } = await state.supabase
         .from("real_transactions")
