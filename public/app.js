@@ -130,7 +130,6 @@ const elements = {
   comparisonAmount: document.querySelector("#comparison-amount"),
   comparisonUnit: document.querySelector("#comparison-unit"),
   comparisonSort: document.querySelector("#comparison-sort"),
-  comparisonSortDirection: document.querySelector("#comparison-sort-direction"),
   comparisonRefresh: document.querySelector("#refresh-comparison"),
   comparisonTable: document.querySelector("#comparison-table"),
   stockSearch: document.querySelector("#stock-search"),
@@ -2578,11 +2577,6 @@ function renderComparisonTable() {
   elements.comparisonAmount.value = state.comparisonAmount;
   elements.comparisonUnit.value = state.comparisonUnit;
   elements.comparisonSort.value = state.comparisonSort;
-  elements.comparisonSortDirection.textContent = state.comparisonSortDirection === "asc" ? "Asc" : "Desc";
-  elements.comparisonSortDirection.setAttribute(
-    "aria-label",
-    `Sort ${state.comparisonSortDirection === "asc" ? "ascending" : "descending"}`
-  );
   renderComparisonPageContext();
 
   const rows = comparisonRows();
@@ -2605,7 +2599,7 @@ function renderComparisonTable() {
     state.comparisonSort === key ? `<span aria-hidden="true">${state.comparisonSortDirection === "asc" ? "ASC" : "DESC"}</span>` : "";
 
   elements.comparisonTable.innerHTML = `
-    <table class="comparison-desktop-table">
+    <table>
       <thead>
         <tr>
           <th><button type="button" data-sort-key="symbol">Symbol ${sortMark("symbol")}</button></th>
@@ -2641,34 +2635,6 @@ function renderComparisonTable() {
           .join("")}
       </tbody>
     </table>
-    <div class="comparison-mobile-list" aria-label="Mobile stock comparison list">
-      ${rows
-        .map((row, index) => {
-          const perfClass = (Number(row.performance) || 0) >= 0 ? "up" : "down";
-          const pnlClass = (Number(row.pnl) || 0) >= 0 ? "up" : "down";
-          const dayClass = (Number(row.dayChange) || 0) >= 0 ? "up" : "down";
-          return `
-            <button class="comparison-mobile-row" type="button" data-action="select" data-symbol="${escapeHtml(row.symbol)}">
-              <span class="comparison-rank">${index + 1}</span>
-              <span class="comparison-mobile-main">
-                <strong>${escapeHtml(row.symbol)}</strong>
-                <small>${money(row.price)} | Day <em class="${dayClass}">${signed(row.dayChange, "%")}</em></small>
-              </span>
-              <span class="comparison-mobile-score">
-                <strong class="${perfClass}">${signed(row.performance, "%")}</strong>
-                <small>${row.performanceLabel ? escapeHtml(row.performanceLabel) : escapeHtml(comparisonLabel())}</small>
-              </span>
-              <span class="comparison-mobile-meta">
-                <span>Shares <strong>${row.shares ? row.shares.toLocaleString() : "--"}</strong></span>
-                <span>Value <strong>${money(row.value)}</strong></span>
-                <span>P/L <strong class="${pnlClass}">${signedMoney(row.pnl)}</strong></span>
-                <span>P/L % <strong class="${pnlClass}">${row.shares ? signed(row.pnlPercent, "%") : "--"}</strong></span>
-              </span>
-            </button>
-          `;
-        })
-        .join("")}
-    </div>
   `;
 }
 
@@ -3818,12 +3784,6 @@ elements.comparisonControls.addEventListener("change", applyComparisonControls);
 elements.comparisonControls.addEventListener("submit", (event) => {
   event.preventDefault();
   applyComparisonControls();
-});
-
-elements.comparisonSortDirection.addEventListener("click", () => {
-  state.comparisonSortDirection = state.comparisonSortDirection === "desc" ? "asc" : "desc";
-  localStorage.setItem("stock-dashboard-comparison-sort-direction", state.comparisonSortDirection);
-  renderComparisonTable();
 });
 
 elements.comparisonRefresh.addEventListener("click", () => {

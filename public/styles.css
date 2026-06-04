@@ -1679,7 +1679,7 @@ h2 {
 
 .comparison-controls {
   display: grid;
-  grid-template-columns: 100px 150px 180px 76px;
+  grid-template-columns: 100px 150px 180px;
   gap: 8px;
   justify-content: start;
   width: fit-content;
@@ -1695,8 +1695,7 @@ h2 {
 }
 
 .comparison-controls input,
-.comparison-controls select,
-.comparison-controls button {
+.comparison-controls select {
   width: 100%;
   min-width: 0;
   height: 32px;
@@ -1707,16 +1706,6 @@ h2 {
   font-size: 0.78rem;
   font-weight: 750;
   padding: 0 7px;
-}
-
-.comparison-controls button {
-  align-self: end;
-  border-color: rgba(var(--mode-accent-rgb), 0.28);
-  background:
-    linear-gradient(180deg, rgba(var(--mode-accent-rgb), 0.12), transparent),
-    rgba(32, 38, 43, 0.82);
-  color: var(--mode-accent);
-  font-weight: 900;
 }
 
 .comparison-table {
@@ -1812,10 +1801,6 @@ h2 {
 .comparison-table td small {
   color: var(--muted);
   font-size: 0.72rem;
-}
-
-.comparison-mobile-list {
-  display: none;
 }
 
 .empty-state.mini {
@@ -2939,105 +2924,6 @@ h2 {
     flex-direction: column;
   }
 
-  .comparison-table {
-    max-height: none;
-    overflow: visible;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .comparison-desktop-table {
-    display: none;
-  }
-
-  .comparison-mobile-list {
-    display: grid;
-    gap: 8px;
-  }
-
-  .comparison-mobile-row {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-    gap: 9px;
-    width: 100%;
-    border: 1px solid rgba(var(--mode-accent-rgb), 0.18);
-    border-left: 4px solid rgba(var(--mode-accent-rgb), 0.62);
-    border-radius: 8px;
-    background:
-      linear-gradient(135deg, rgba(var(--mode-accent-rgb), 0.08), transparent 52%),
-      rgba(17, 19, 21, 0.72);
-    color: var(--text);
-    padding: 10px;
-    text-align: left;
-  }
-
-  .comparison-rank {
-    display: grid;
-    place-items: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 7px;
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--muted);
-    font-size: 0.72rem;
-    font-weight: 900;
-  }
-
-  .comparison-mobile-main,
-  .comparison-mobile-score,
-  .comparison-mobile-meta span {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-  }
-
-  .comparison-mobile-main strong,
-  .comparison-mobile-score strong {
-    color: var(--text);
-    font-size: 1rem;
-    font-weight: 950;
-    line-height: 1;
-  }
-
-  .comparison-mobile-main small,
-  .comparison-mobile-score small,
-  .comparison-mobile-meta span {
-    color: var(--muted);
-    font-size: 0.68rem;
-    font-weight: 780;
-  }
-
-  .comparison-mobile-main em {
-    font-style: normal;
-  }
-
-  .comparison-mobile-score {
-    justify-items: end;
-    text-align: right;
-  }
-
-  .comparison-mobile-meta {
-    grid-column: 2 / -1;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    padding-top: 2px;
-  }
-
-  .comparison-mobile-meta span {
-    border: 1px solid rgba(238, 243, 245, 0.08);
-    border-radius: 7px;
-    background: rgba(255, 255, 255, 0.025);
-    padding: 6px;
-  }
-
-  .comparison-mobile-meta strong {
-    color: var(--text);
-    font-size: 0.72rem;
-    font-weight: 900;
-  }
-
   .settings-card.danger {
     grid-template-columns: 1fr;
   }
@@ -3484,15 +3370,6 @@ h2 {
     padding: 12px 10px;
   }
 
-  .comparison-mobile-row {
-    grid-template-columns: 24px minmax(0, 1fr) minmax(78px, auto);
-    gap: 7px;
-    padding: 9px;
-  }
-
-  .comparison-mobile-meta {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 390px) {
@@ -3529,17 +3406,6 @@ h2 {
     padding: 4px 6px;
   }
 
-  .comparison-mobile-row {
-    grid-template-columns: minmax(0, 1fr) minmax(76px, auto);
-  }
-
-  .comparison-rank {
-    display: none;
-  }
-
-  .comparison-mobile-meta {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
