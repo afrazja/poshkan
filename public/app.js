@@ -3239,6 +3239,9 @@ async function selectStock(symbol) {
   state.selected = symbol;
   renderWatchlist();
   renderSelectedQuote();
+  if (!state.showDetailsPanel) {
+    elements.marketStatus.textContent = `Selected ${symbol}. Use the side arrow to open chart, news, and trading controls.`;
+  }
   await Promise.all([refreshHistory(symbol), refreshNews(symbol)]);
 }
 
