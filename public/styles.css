@@ -1096,6 +1096,10 @@ h2 {
   display: none;
 }
 
+.mobile-nav[hidden] {
+  display: none !important;
+}
+
 .pulse {
   width: 10px;
   height: 10px;

@@ -93,6 +93,7 @@ const elements = {
   appNavButtons: document.querySelectorAll("[data-app-nav]"),
   portfolioModeButtons: document.querySelectorAll("[data-portfolio-mode]"),
   modeContext: document.querySelector("#mode-context"),
+  mobileNav: document.querySelector(".mobile-nav"),
   mobileNavButtons: document.querySelectorAll("[data-mobile-nav]"),
   mobileAlertCount: document.querySelector("#mobile-alert-count"),
   portfolioHealth: document.querySelector("#portfolio-health"),
@@ -1504,6 +1505,7 @@ function renderAuthState() {
   elements.authPanel.hidden = isSignedIn;
   elements.dashboardShell.hidden = !isSignedIn;
   elements.accountIdentity.textContent = isSignedIn ? userDisplayName(state.session.user) : "";
+  renderMobileNav();
 }
 
 function userDisplayName(user) {
@@ -1631,6 +1633,7 @@ async function initializeAuth() {
     setAuthMessage("Add SUPABASE_URL and SUPABASE_ANON_KEY to the server environment, then restart.", "error");
     elements.dashboardShell.hidden = true;
     elements.authPanel.hidden = false;
+    renderMobileNav();
     return;
   }
 
@@ -1965,6 +1968,14 @@ function renderComparisonPageVisibility() {
 }
 
 function renderMobileNav() {
+  const isSignedIn = Boolean(state.session?.user);
+  if (elements.mobileNav) {
+    elements.mobileNav.hidden = !isSignedIn;
+  }
+  if (!isSignedIn) {
+    return;
+  }
+
   const applyState = (button, target) => {
     const active =
       (target === "cards" && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
