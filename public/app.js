@@ -49,7 +49,7 @@ const state = {
   chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
   showMA: localStorage.getItem("stock-dashboard-show-ma") !== "false",
   showVolume: localStorage.getItem("stock-dashboard-show-volume") !== "false",
-  showDetailsPanel: localStorage.getItem("stock-dashboard-show-details-panel") !== "false",
+  showDetailsPanel: false,
   chartPoints: [],
   chartHoverIndex: null,
   alertEvents: [],
@@ -3206,11 +3206,31 @@ function renderChart() {
 }
 
 async function selectStock(symbol) {
-  state.selected = symbol;
   const shouldOpenMobileDetail = window.matchMedia?.("(max-width: 880px)")?.matches;
+  const clickedOpenDesktopCard = !shouldOpenMobileDetail && state.showDetailsPanel && state.selected === symbol;
+
+  if (clickedOpenDesktopCard) {
+    state.selected = null;
+    state.mobileDetailOpen = false;
+    state.showDetailsPanel = false;
+    localStorage.setItem("stock-dashboard-show-details-panel", "false");
+    renderSectionVisibility();
+    renderWatchlist();
+    renderSelectedQuote();
+    elements.marketStatus.textContent = "Chart and news closed. Select a stock to open details.";
+    return;
+  }
+
+  state.selected = symbol;
   if (shouldOpenMobileDetail) {
     state.mobileDetailOpen = true;
     state.showDetailsPanel = true;
+    localStorage.setItem("stock-dashboard-show-details-panel", "true");
+    renderSectionVisibility();
+  } else {
+    state.mobileDetailOpen = false;
+    state.showDetailsPanel = true;
+    localStorage.setItem("stock-dashboard-show-details-panel", "true");
     renderSectionVisibility();
   }
   renderWatchlist();
