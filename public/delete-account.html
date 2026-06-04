@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delete Your Poshkan Account</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111315;
+        --surface: #181c20;
+        --line: #313941;
+        --text: #eef3f5;
+        --muted: #9aa8af;
+        --cyan: #62c8dd;
+        --red: #ff6b6b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at top left, rgba(98, 200, 221, 0.12), transparent 34rem),
+          linear-gradient(135deg, #111315 0%, #14191a 48%, #171510 100%);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.6;
+      }
+
+      main {
+        width: min(900px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 48px 0;
+      }
+
+      article {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 18rem),
+          rgba(24, 28, 32, 0.92);
+        padding: clamp(20px, 5vw, 42px);
+      }
+
+      h1,
+      h2,
+      p,
+      ol,
+      ul {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        line-height: 1;
+      }
+
+      h2 {
+        margin-top: 32px;
+        color: #f5fafb;
+        font-size: 1.12rem;
+      }
+
+      a {
+        color: var(--cyan);
+      }
+
+      .updated,
+      li,
+      p {
+        color: var(--muted);
+      }
+
+      .updated {
+        margin-bottom: 28px;
+        font-weight: 800;
+      }
+
+      .request-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 42px;
+        margin: 8px 0 18px;
+        border: 1px solid rgba(98, 200, 221, 0.36);
+        border-radius: 8px;
+        background: rgba(98, 200, 221, 0.1);
+        color: var(--text);
+        font-weight: 900;
+        padding: 0 14px;
+        text-decoration: none;
+      }
+
+      .warning {
+        border-left: 3px solid var(--red);
+        background: rgba(255, 107, 107, 0.08);
+        padding: 12px 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        <h1>Delete Your Account</h1>
+        <p class="updated">Last updated: June 4, 2026</p>
+
+        <p>
+          Poshkan users can request deletion of their account and associated app data at any time.
+        </p>
+
+        <a
+          class="request-link"
+          href="mailto:afz.javan@gmail.com?subject=Poshkan%20Account%20Deletion%20Request&body=Please%20delete%20my%20Poshkan%20account%20and%20associated%20data.%0A%0AAccount%20email%3A%20"
+        >
+          Request account deletion
+        </a>
+
+        <h2>How To Request Deletion</h2>
+        <ol>
+          <li>Send an email to <a href="mailto:afz.javan@gmail.com">afz.javan@gmail.com</a>.</li>
+          <li>Use the subject line: Poshkan Account Deletion Request.</li>
+          <li>Include the email address used for your Poshkan account.</li>
+        </ol>
+
+        <h2>Data That Will Be Deleted</h2>
+        <ul>
+          <li>Your Poshkan account profile.</li>
+          <li>Your saved watchlists and stock groups.</li>
+          <li>Your paper portfolio, paper trades, alerts, and trade history.</li>
+          <li>Your real portfolio tracker entries, real watchlist, alerts, and related history.</li>
+          <li>Your generated paper API keys.</li>
+        </ul>
+
+        <h2>Data That May Be Retained</h2>
+        <p>
+          Some limited records may be retained temporarily if required for security, fraud prevention, legal compliance,
+          backup recovery, or service logs. Retained records are not used to continue providing the app account after
+          deletion is complete.
+        </p>
+
+        <h2>Processing Time</h2>
+        <p>
+          We aim to complete deletion requests within 30 days after verifying the account email.
+        </p>
+
+        <p class="warning">
+          Account deletion is permanent. Deleted portfolio, watchlist, alert, and trade history data cannot be restored.
+        </p>
+      </article>
+    </main>
+  </body>
+</html>
