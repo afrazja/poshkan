@@ -1044,20 +1044,25 @@ function renderCompare() {
   });
   rows.sort((a, b) => {
     const direction = state.compareDirection === "asc" ? 1 : -1;
-    const get = (row) =>
-      state.compareSort === "performance"
-        ? Number(row.performance?.changePercent) || 0
-        : state.compareSort === "value"
-          ? Number(row.stats?.value) || 0
-          : state.compareSort === "pnl"
-            ? Number(row.stats?.totalPnl) || 0
-            : state.compareSort === "price"
-              ? Number(row.quote?.regularMarketPrice) || 0
-              : row.symbol;
+    const get = (row) => {
+      if (state.compareSort === "performance") return Number(row.performance?.changePercent) || 0;
+      if (state.compareSort === "price") return Number(row.quote?.regularMarketPrice) || 0;
+      if (state.compareSort === "shares") return Number(row.stats?.quantity) || 0;
+      if (state.compareSort === "value") return Number(row.stats?.value) || 0;
+      if (state.compareSort === "dayPnl") return Number(row.stats?.dayPnl) || 0;
+      if (state.compareSort === "pnl") return Number(row.stats?.totalPnl) || 0;
+      if (state.compareSort === "pnlPercent") return Number(row.stats?.totalPnlPercent) || 0;
+      return row.symbol;
+    };
     const av = get(a);
     const bv = get(b);
     return typeof av === "string" ? av.localeCompare(bv) * direction : (av - bv) * direction;
   });
+  const sortLabel = (column, label) => {
+    const active = state.compareSort === column;
+    const arrow = active ? (state.compareDirection === "asc" ? " up" : " down") : "";
+    return `<button type="button" class="${active ? "active" : ""}" data-sort="${column}" title="Sort by ${label}">${label}${arrow}</button>`;
+  };
   view.innerHTML = `
     <div class="page-head">
       <div><p class="eyebrow">Compare</p><h2>${escapeHtml(portfolio.name)}</h2><span>Holdings and watchlist performance for the active portfolio.</span></div>
@@ -1065,15 +1070,25 @@ function renderCompare() {
     </div>
     <div class="data-table compare-table">
       <div class="table-row table-head">
-        ${["symbol", "price", "performance", "value", "pnl"].map((column) => `<button type="button" data-sort="${column}">${column}</button>`).join("")}
+        ${sortLabel("symbol", "Symbol")}
+        ${sortLabel("price", "Price")}
+        ${sortLabel("shares", "Shares")}
+        ${sortLabel("performance", "4D")}
+        ${sortLabel("value", "Value")}
+        ${sortLabel("dayPnl", "Day P/L")}
+        ${sortLabel("pnl", "Total P/L")}
+        ${sortLabel("pnlPercent", "P/L %")}
       </div>
       ${rows.map((row) => `
         <button class="table-row" type="button" data-action="open-stock" data-symbol="${row.symbol}">
           <span><strong>${row.symbol}</strong><small>${row.holding ? "Holding" : "Watchlist"}</small></span>
           <span>${money(row.quote?.regularMarketPrice)}</span>
+          <span>${row.stats ? number(row.stats.quantity) : "--"}</span>
           <span class="${Number(row.performance?.changePercent) >= 0 ? "positive" : "negative"}">${signedPercent(row.performance?.changePercent)} ${row.performance?.effectiveLabel ? `<small>(${escapeHtml(row.performance.effectiveLabel)})</small>` : ""}</span>
           <span>${row.stats ? money(row.stats.value) : "--"}</span>
+          <span class="${Number(row.stats?.dayPnl) >= 0 ? "positive" : "negative"}">${row.stats ? signedMoney(row.stats.dayPnl) : "--"}</span>
           <span class="${Number(row.stats?.totalPnl) >= 0 ? "positive" : "negative"}">${row.stats ? signedMoney(row.stats.totalPnl) : "--"}</span>
+          <span class="${Number(row.stats?.totalPnlPercent) >= 0 ? "positive" : "negative"}">${row.stats ? signedPercent(row.stats.totalPnlPercent) : "--"}</span>
         </button>
       `).join("") || `<section class="empty-list"><h3>No symbols to compare</h3></section>`}
     </div>
@@ -1329,6 +1344,19 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const sortButton = event.target.closest("[data-sort]");
+  if (sortButton) {
+    const column = sortButton.dataset.sort;
+    if (state.compareSort === column) {
+      state.compareDirection = state.compareDirection === "asc" ? "desc" : "asc";
+    } else {
+      state.compareSort = column;
+      state.compareDirection = column === "symbol" ? "asc" : "desc";
+    }
+    render();
+    return;
+  }
+
   const side = event.target.closest("[data-side]");
   if (side) {
     const form = side.closest(".trade-form");

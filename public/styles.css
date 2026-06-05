@@ -650,7 +650,7 @@ h3 {
 }
 
 .compare-table .table-row {
-  grid-template-columns: 1.2fr 0.8fr 1fr 0.9fr 0.9fr;
+  grid-template-columns: 1.15fr 0.76fr 0.62fr 0.72fr 0.86fr 0.82fr 0.9fr 0.72fr;
 }
 
 .table-row:last-child {
@@ -673,6 +673,10 @@ h3 {
   padding: 0;
   text-align: left;
   text-transform: uppercase;
+}
+
+.table-head button.active {
+  color: var(--accent);
 }
 
 .positive {
