@@ -118,11 +118,18 @@
         </div>
       </section>
       <nav class="app-nav" aria-label="Main app navigation">
-        <button type="button" class="active" data-app-nav="cards">Cards</button>
-        <button id="open-comparison" type="button" data-app-nav="table">Table</button>
+        <button type="button" class="active" data-app-nav="cards">Portfolio</button>
+        <button id="open-comparison" type="button" data-app-nav="table">Compare</button>
         <button id="open-history" type="button" data-app-nav="history">History</button>
         <button id="open-settings" type="button" data-app-nav="settings">Settings</button>
       </nav>
+      <section class="portfolio-home-head" aria-label="Portfolio overview">
+        <div>
+          <p class="eyebrow">Portfolio</p>
+          <h2 id="portfolio-home-title">Paper Portfolio</h2>
+          <span id="portfolio-home-copy">Track cash, invested value, and practice positions from one clean home screen.</span>
+        </div>
+      </section>
       <section id="account-summary" class="account-summary" aria-live="polite"></section>
       <section id="portfolio-health" class="portfolio-health" aria-live="polite"></section>
       <section class="portfolio-mode" aria-label="Portfolio mode">
@@ -149,7 +156,7 @@
       <section class="workspace">
         <aside class="watchlist" aria-label="Stock watchlist">
           <div class="panel-title">
-            <h2>Watchlist</h2>
+            <h2 id="portfolio-list-title">Portfolio Stocks</h2>
             <div class="panel-actions">
               <button id="refresh-now" title="Refresh quotes">Refresh</button>
             </div>
@@ -284,7 +291,7 @@
           </div>
           <div class="comparison-page-actions">
             <button id="refresh-comparison" type="button">Update</button>
-            <button id="back-to-cards" type="button">Back to cards</button>
+            <button id="back-to-cards" type="button">Back to portfolio</button>
           </div>
         </div>
         <form id="comparison-controls" class="comparison-controls" autocomplete="off">
@@ -324,7 +331,7 @@
           </div>
           <div class="comparison-page-actions">
             <button id="refresh-history" type="button">Update</button>
-            <button id="back-from-history" type="button">Back to cards</button>
+            <button id="back-from-history" type="button">Back to portfolio</button>
           </div>
         </div>
         <div class="history-grid">
@@ -341,7 +348,7 @@
             <span>Manage features that are useful sometimes but should not crowd the stock dashboard.</span>
           </div>
           <div class="comparison-page-actions">
-            <button id="back-from-settings" type="button">Back to cards</button>
+            <button id="back-from-settings" type="button">Back to portfolio</button>
           </div>
         </div>
         <section id="settings-overview" class="settings-overview" aria-live="polite"></section>
@@ -360,10 +367,10 @@
 
       <nav class="mobile-nav" aria-label="Mobile app navigation" hidden>
         <button type="button" data-mobile-nav="cards">
-          <span>Cards</span>
+          <span>Portfolio</span>
         </button>
         <button type="button" data-mobile-nav="table">
-          <span>Table</span>
+          <span>Compare</span>
         </button>
         <button type="button" data-mobile-nav="history">
           <span>History</span>

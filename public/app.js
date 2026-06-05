@@ -106,6 +106,9 @@ const elements = {
   comparisonPage: document.querySelector("#comparison-page"),
   historyPage: document.querySelector("#history-page"),
   settingsPage: document.querySelector("#settings-page"),
+  portfolioHomeTitle: document.querySelector("#portfolio-home-title"),
+  portfolioHomeCopy: document.querySelector("#portfolio-home-copy"),
+  portfolioListTitle: document.querySelector("#portfolio-list-title"),
   backToCards: document.querySelector("#back-to-cards"),
   backToWatchlist: document.querySelector("#back-to-watchlist"),
   backFromHistory: document.querySelector("#back-from-history"),
@@ -2523,6 +2526,8 @@ function renderSettingsPage() {
 
 function renderPortfolioMode() {
   const realMode = isRealMode();
+  const realOwned = isRealOwnedTab();
+  const realWatchlist = isRealWatchlistTab();
   elements.dashboardShell.classList.toggle("mode-paper", !realMode);
   elements.dashboardShell.classList.toggle("mode-real", realMode);
   elements.portfolioModeButtons.forEach((button) => {
@@ -2538,8 +2543,23 @@ function renderPortfolioMode() {
       <strong>Paper Trading Practice</strong>
       <span>Practice buy and sell ideas with virtual money. Claude API trades stay inside this paper portfolio.</span>
     `;
-  elements.form.hidden = isRealOwnedTab();
-  elements.realPositionForm.hidden = !isRealOwnedTab();
+  elements.portfolioHomeTitle.textContent = realOwned
+    ? "Real Holdings"
+    : realWatchlist
+      ? "Real Watchlist"
+      : "Paper Portfolio";
+  elements.portfolioHomeCopy.textContent = realOwned
+    ? "Track owned shares, average cost, market value, and unrealized profit without mixing it with paper trades."
+    : realWatchlist
+      ? "Follow real-market symbols separately from your owned positions."
+      : "Practice buying and selling with virtual cash while keeping your performance easy to scan.";
+  elements.portfolioListTitle.textContent = realOwned
+    ? "Owned Stocks"
+    : realWatchlist
+      ? "Watchlist Stocks"
+      : "Portfolio Stocks";
+  elements.form.hidden = realOwned;
+  elements.realPositionForm.hidden = !realOwned;
   elements.groupTabs.hidden = false;
   elements.groupLabel.hidden = false;
   elements.groupLabel.textContent = realMode ? "Real portfolio" : "Paper groups";
@@ -2640,14 +2660,14 @@ function renderComparisonTable() {
 
 function renderComparisonPageContext() {
   if (isRealMode()) {
-    elements.comparisonPageKicker.textContent = "Real portfolio table";
-    elements.comparisonPageTitle.textContent = "Real Portfolio Performance";
+    elements.comparisonPageKicker.textContent = "Real portfolio compare";
+    elements.comparisonPageTitle.textContent = "Compare Real Stocks";
     elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} real portfolio performance`;
     return;
   }
 
-  elements.comparisonPageKicker.textContent = "Paper comparison table";
-  elements.comparisonPageTitle.textContent = "Paper Stock Performance";
+  elements.comparisonPageKicker.textContent = "Paper portfolio compare";
+  elements.comparisonPageTitle.textContent = "Compare Paper Stocks";
   elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} paper performance`;
 }
 
