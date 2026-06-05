@@ -31,6 +31,9 @@ const state = {
   searchResults: [],
   compareSort: "symbol",
   compareDirection: "asc",
+  compareAmount: 4,
+  compareUnit: "days",
+  comparePeriodLabel: "4 days",
   apiKeys: [],
   config: null,
   loading: false
@@ -592,9 +595,14 @@ async function loadPerformance() {
   const heldSince = portfolioHoldings(portfolio.id)
     .map((holding) => `${holding.symbol}:${Math.floor(new Date(holding.opened_at || Date.now()).getTime() / 1000)}`)
     .join(",");
+  const amount = Math.max(1, Number.parseInt(state.compareAmount, 10) || 1);
+  const unit = ["hours", "days", "months"].includes(state.compareUnit) ? state.compareUnit : "days";
   const data = await fetchJson(
-    `/api/performance?symbols=${encodeURIComponent(symbols.join(","))}&amount=4&unit=days&heldSince=${encodeURIComponent(heldSince)}`
+    `/api/performance?symbols=${encodeURIComponent(symbols.join(","))}&amount=${encodeURIComponent(amount)}&unit=${encodeURIComponent(unit)}&heldSince=${encodeURIComponent(heldSince)}`
   );
+  state.compareAmount = amount;
+  state.compareUnit = unit;
+  state.comparePeriodLabel = data.periodLabel || `${amount} ${unit}`;
   state.performance = new Map((data.performance || []).map((item) => [cleanSymbol(item.symbol), item]));
 }
 
@@ -1067,6 +1075,7 @@ function renderCompare() {
       if (state.compareSort === "price") return Number(row.quote?.regularMarketPrice) || 0;
       if (state.compareSort === "shares") return Number(row.stats?.quantity) || 0;
       if (state.compareSort === "value") return Number(row.stats?.value) || 0;
+      if (state.compareSort === "dayPercent") return Number(row.quote?.regularMarketChangePercent) || 0;
       if (state.compareSort === "dayPnl") return Number(row.stats?.dayPnl) || 0;
       if (state.compareSort === "pnl") return Number(row.stats?.totalPnl) || 0;
       if (state.compareSort === "pnlPercent") return Number(row.stats?.totalPnlPercent) || 0;
@@ -1084,15 +1093,30 @@ function renderCompare() {
   view.innerHTML = `
     <div class="page-head">
       <div><p class="eyebrow">Compare</p><h2>${escapeHtml(portfolio.name)}</h2><span>Holdings and watchlist performance for the active portfolio.</span></div>
-      <button type="button" data-action="refresh-performance">Update</button>
+      <form class="compare-controls" id="compare-period-form">
+        <label>
+          <span>Period</span>
+          <input name="amount" type="number" min="1" max="365" value="${escapeHtml(state.compareAmount)}" />
+        </label>
+        <label>
+          <span>Unit</span>
+          <select name="unit">
+            <option value="hours" ${state.compareUnit === "hours" ? "selected" : ""}>Hours</option>
+            <option value="days" ${state.compareUnit === "days" ? "selected" : ""}>Days</option>
+            <option value="months" ${state.compareUnit === "months" ? "selected" : ""}>Months</option>
+          </select>
+        </label>
+        <button type="submit">Update</button>
+      </form>
     </div>
     <div class="data-table compare-table">
       <div class="table-row table-head">
         ${sortLabel("symbol", "Symbol")}
         ${sortLabel("price", "Price")}
         ${sortLabel("shares", "Shares")}
-        ${sortLabel("performance", "4D")}
+        ${sortLabel("performance", state.comparePeriodLabel)}
         ${sortLabel("value", "Value")}
+        ${sortLabel("dayPercent", "Day %")}
         ${sortLabel("dayPnl", "Day P/L")}
         ${sortLabel("pnl", "Total P/L")}
         ${sortLabel("pnlPercent", "P/L %")}
@@ -1104,6 +1128,7 @@ function renderCompare() {
           <span>${row.stats ? number(row.stats.quantity) : "--"}</span>
           <span class="${Number(row.performance?.changePercent) >= 0 ? "positive" : "negative"}">${signedPercent(row.performance?.changePercent)} ${row.performance?.effectiveLabel ? `<small>(${escapeHtml(row.performance.effectiveLabel)})</small>` : ""}</span>
           <span>${row.stats ? money(row.stats.value) : "--"}</span>
+          <span class="${Number(row.quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(row.quote?.regularMarketChangePercent)}</span>
           <span class="${Number(row.stats?.dayPnl) >= 0 ? "positive" : "negative"}">${row.stats ? signedMoney(row.stats.dayPnl) : "--"}</span>
           <span class="${Number(row.stats?.totalPnl) >= 0 ? "positive" : "negative"}">${row.stats ? signedMoney(row.stats.totalPnl) : "--"}</span>
           <span class="${Number(row.stats?.totalPnlPercent) >= 0 ? "positive" : "negative"}">${row.stats ? signedPercent(row.stats.totalPnlPercent) : "--"}</span>
@@ -1346,11 +1371,18 @@ document.addEventListener("submit", async (event) => {
   const searchForm = event.target.closest("#asset-search-form");
   const tradeForm = event.target.closest(".trade-form");
   const startingForm = event.target.closest(".starting-form");
-  if (!searchForm && !tradeForm && !startingForm) return;
+  const compareForm = event.target.closest("#compare-period-form");
+  if (!searchForm && !tradeForm && !startingForm && !compareForm) return;
   event.preventDefault();
   try {
     if (searchForm) {
       await searchAssets(searchForm.querySelector("input").value);
+    }
+    if (compareForm) {
+      state.compareAmount = Math.max(1, Number.parseInt(compareForm.elements.amount.value, 10) || 1);
+      state.compareUnit = compareForm.elements.unit.value;
+      await loadPerformance();
+      render();
     }
     if (tradeForm) {
       const side = tradeForm.querySelector("[data-side].active")?.dataset.side || "buy";

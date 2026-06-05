@@ -650,7 +650,33 @@ h3 {
 }
 
 .compare-table .table-row {
-  grid-template-columns: 1.15fr 0.76fr 0.62fr 0.72fr 0.86fr 0.82fr 0.9fr 0.72fr;
+  grid-template-columns: 1.08fr 0.68fr 0.56fr 0.82fr 0.78fr 0.62fr 0.74fr 0.82fr 0.66fr;
+}
+
+.compare-controls {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.compare-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.compare-controls input,
+.compare-controls select {
+  min-height: 38px;
+  width: 92px;
+  padding: 0 10px;
+}
+
+.compare-controls select {
+  width: 112px;
 }
 
 .table-row:last-child {
