@@ -893,7 +893,7 @@ function renderStock() {
     </nav>
     <section class="stock-detail-grid">
       <div class="stock-main">${renderStockTab(symbol, holding, stats)}</div>
-      <aside class="trade-panel">${renderTradePanel(symbol, holding, stats)}</aside>
+      ${state.stockTab === "trade" ? "" : `<aside class="trade-panel">${renderTradePanel(symbol, holding, stats)}</aside>`}
     </section>
   `;
   if (state.stockTab === "chart") drawChart();
