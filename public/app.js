@@ -63,6 +63,7 @@ const state = {
   cloudReady: false,
   cloudSaving: false,
   cloudSaveQueued: false,
+  realPortfolioTouched: false,
   refreshMs: 30000,
   paperSyncMs: 8000,
   paperSyncing: false,
@@ -1060,6 +1061,7 @@ async function restoreRemovedStock(key) {
     state.removedRealSymbols.delete(snapshot.symbol);
     if (snapshot.position) {
       state.realPositions[snapshot.symbol] = { ...snapshot.position };
+      state.realPortfolioTouched = true;
     }
     if (snapshot.watchlist) {
       state.realWatchlist = state.realWatchlist.filter((item) => item !== snapshot.symbol);
@@ -1590,7 +1592,8 @@ async function saveCloudData({ force = false } = {}) {
     await saveResult(state.supabase.from("positions").insert(activePositions));
   }
 
-  if (state.realPositionsCloudEnabled) {
+  const realPositionCount = Object.keys(state.realPositions || {}).length;
+  if (state.realPositionsCloudEnabled && (state.realPortfolioTouched || realPositionCount > 0)) {
     await saveResult(state.supabase.from("real_positions").delete().eq("user_id", userId));
     await saveResult(state.supabase.from("real_watchlist").delete().eq("user_id", userId));
     const realPositions = Object.entries(state.realPositions || {})
@@ -1631,6 +1634,7 @@ async function saveCloudData({ force = false } = {}) {
         await saveResult(state.supabase.from("real_transactions").insert(realTransactions));
       }
     }
+    state.realPortfolioTouched = false;
   }
 
   const activeAlerts = symbols
@@ -3492,6 +3496,7 @@ async function addOrUpdateRealPosition(symbol, shares, avgCost) {
     avgCost: positionAvgCost,
     openedAt: existing.openedAt || Date.now()
   };
+  state.realPortfolioTouched = true;
   recordRealTransaction({
     type: "set",
     symbol: resolvedSymbol,
@@ -3547,6 +3552,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
       avgCost: Number(position.avgCost.toFixed(4)),
       openedAt: position.openedAt
     };
+    state.realPortfolioTouched = true;
     recordRealTransaction({
       type: "buy",
       symbol: resolvedSymbol,
@@ -3569,6 +3575,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
     position.shares = Math.max(0, currentShares - qty);
     if (position.shares <= 0) {
       delete state.realPositions[resolvedSymbol];
+      state.realPortfolioTouched = true;
       state.selected = currentSymbols()[0] || null;
     } else {
       state.realPositions[resolvedSymbol] = {
@@ -3576,6 +3583,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
         avgCost: Number(position.avgCost.toFixed(4)),
         openedAt: position.openedAt || Date.now()
       };
+      state.realPortfolioTouched = true;
     }
     recordRealTransaction({
       type: "sell",
@@ -4180,6 +4188,7 @@ elements.stockList.addEventListener("click", async (event) => {
         snapshot.position = state.realPositions[symbol] ? { ...state.realPositions[symbol] } : null;
         state.removedRealSymbols.add(symbol);
         delete state.realPositions[symbol];
+        state.realPortfolioTouched = true;
       } else {
         snapshot.watchlist = true;
         snapshot.index = Math.max(0, state.realWatchlist.indexOf(symbol));
