@@ -109,7 +109,12 @@ function escapeHtml(value) {
 }
 
 function setStatus(message, type = "") {
-  elements.status.textContent = message || "";
+  const text = String(message || "");
+  const friendly =
+    text.includes("row-level security") || text.includes("violates row-level security")
+      ? "Database permissions need updating. Run supabase-portfolio-redesign.sql in Supabase, then try again."
+      : text;
+  elements.status.textContent = friendly;
   elements.status.className = `app-status ${type}`.trim();
 }
 
