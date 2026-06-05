@@ -118,6 +118,11 @@ function setStatus(message, type = "") {
   elements.status.className = `app-status ${type}`.trim();
 }
 
+function throwIfSupabaseError(result) {
+  if (result?.error) throw result.error;
+  return result;
+}
+
 function activePortfolio() {
   return state.portfolios.find((portfolio) => portfolio.id === state.selectedPortfolioId) || state.portfolios[0] || null;
 }
@@ -418,8 +423,8 @@ async function setStartingHolding(symbol, quantity, avgCost) {
     { onConflict: "portfolio_id,symbol" }
   );
   if (error) throw error;
-  await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean);
-  await state.supabase.from("portfolio_trades").insert({
+  throwIfSupabaseError(await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean));
+  throwIfSupabaseError(await state.supabase.from("portfolio_trades").insert({
     portfolio_id: portfolio.id,
     user_id: userId,
     symbol: clean,
@@ -429,7 +434,7 @@ async function setStartingHolding(symbol, quantity, avgCost) {
     price: cost,
     total: qty * cost,
     source: "manual"
-  });
+  }));
   await loadCloudData();
   render();
   setStatus(`${clean} starting holding saved.`, "success");
@@ -479,7 +484,7 @@ async function executeTrade(symbol, side, quantity) {
       { onConflict: "portfolio_id,symbol" }
     );
     if (error) throw error;
-    await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean);
+    throwIfSupabaseError(await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean));
     cash -= total;
   } else {
     const oldQty = Number(current?.quantity) || 0;
@@ -490,19 +495,26 @@ async function executeTrade(symbol, side, quantity) {
     realizedPnl = qty * (price - Number(current.avg_cost));
     const newQty = oldQty - qty;
     if (newQty <= 0) {
-      await state.supabase.from("portfolio_holdings").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean);
+      throwIfSupabaseError(await state.supabase.from("portfolio_holdings").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean));
     } else {
-      await state.supabase
-        .from("portfolio_holdings")
-        .update({ quantity: Number(newQty.toFixed(6)), updated_at: new Date().toISOString() })
-        .eq("portfolio_id", portfolio.id)
-        .eq("symbol", clean);
+      throwIfSupabaseError(
+        await state.supabase
+          .from("portfolio_holdings")
+          .update({ quantity: Number(newQty.toFixed(6)), updated_at: new Date().toISOString() })
+          .eq("portfolio_id", portfolio.id)
+          .eq("symbol", clean)
+      );
     }
     cash += qty * price;
   }
 
-  await state.supabase.from("portfolios").update({ cash: Number(cash.toFixed(2)), updated_at: new Date().toISOString() }).eq("id", portfolio.id);
-  await state.supabase.from("portfolio_trades").insert({
+  throwIfSupabaseError(
+    await state.supabase
+      .from("portfolios")
+      .update({ cash: Number(cash.toFixed(2)), updated_at: new Date().toISOString() })
+      .eq("id", portfolio.id)
+  );
+  throwIfSupabaseError(await state.supabase.from("portfolio_trades").insert({
     portfolio_id: portfolio.id,
     user_id: userId,
     symbol: clean,
@@ -513,7 +525,7 @@ async function executeTrade(symbol, side, quantity) {
     total: qty * price,
     realized_pnl: Number(realizedPnl.toFixed(2)),
     source: "manual"
-  });
+  }));
   await loadCloudData();
   state.selectedSymbol = clean;
   state.page = "stock";
@@ -525,7 +537,9 @@ async function executeTrade(symbol, side, quantity) {
 async function deleteWatchlistSymbol(symbol) {
   const portfolio = activePortfolio();
   if (!portfolio) return;
-  await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", cleanSymbol(symbol));
+  throwIfSupabaseError(
+    await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", cleanSymbol(symbol))
+  );
   await loadCloudData();
   render();
 }

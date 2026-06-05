@@ -127,40 +127,40 @@ drop policy if exists "Users can insert their portfolio snapshots" on public.por
 drop policy if exists "Users can update their portfolio snapshots" on public.portfolio_snapshots;
 drop policy if exists "Users can delete their portfolio snapshots" on public.portfolio_snapshots;
 
-create policy "Users can read their profile" on public.profiles for select using (auth.uid() = id);
-create policy "Users can insert their profile" on public.profiles for insert with check (auth.uid() = id);
-create policy "Users can update their profile" on public.profiles for update using (auth.uid() = id) with check (auth.uid() = id);
-create policy "Users can delete their profile" on public.profiles for delete using (auth.uid() = id);
+create policy "Users can read their profile" on public.profiles for select to authenticated using (auth.uid() = id);
+create policy "Users can insert their profile" on public.profiles for insert to authenticated with check (auth.uid() = id);
+create policy "Users can update their profile" on public.profiles for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
+create policy "Users can delete their profile" on public.profiles for delete to authenticated using (auth.uid() = id);
 
-create policy "Users can read their portfolios" on public.portfolios for select using (auth.uid() = user_id);
-create policy "Users can insert their portfolios" on public.portfolios for insert with check (auth.uid() = user_id);
-create policy "Users can update their portfolios" on public.portfolios for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their portfolios" on public.portfolios for delete using (auth.uid() = user_id);
+create policy "Users can read their portfolios" on public.portfolios for select to authenticated using (auth.uid() = user_id);
+create policy "Users can insert their portfolios" on public.portfolios for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can update their portfolios" on public.portfolios for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete their portfolios" on public.portfolios for delete to authenticated using (auth.uid() = user_id);
 
-create policy "Users can read their portfolio holdings" on public.portfolio_holdings for select using (auth.uid() = user_id);
-create policy "Users can insert their portfolio holdings" on public.portfolio_holdings for insert with check (auth.uid() = user_id);
-create policy "Users can update their portfolio holdings" on public.portfolio_holdings for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their portfolio holdings" on public.portfolio_holdings for delete using (auth.uid() = user_id);
+create policy "Users can read their portfolio holdings" on public.portfolio_holdings for select to authenticated using (auth.uid() = user_id);
+create policy "Users can insert their portfolio holdings" on public.portfolio_holdings for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can update their portfolio holdings" on public.portfolio_holdings for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete their portfolio holdings" on public.portfolio_holdings for delete to authenticated using (auth.uid() = user_id);
 
-create policy "Users can read their portfolio watchlist" on public.portfolio_watchlist for select using (auth.uid() = user_id);
-create policy "Users can insert their portfolio watchlist" on public.portfolio_watchlist for insert with check (auth.uid() = user_id);
-create policy "Users can update their portfolio watchlist" on public.portfolio_watchlist for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their portfolio watchlist" on public.portfolio_watchlist for delete using (auth.uid() = user_id);
+create policy "Users can read their portfolio watchlist" on public.portfolio_watchlist for select to authenticated using (auth.uid() = user_id);
+create policy "Users can insert their portfolio watchlist" on public.portfolio_watchlist for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can update their portfolio watchlist" on public.portfolio_watchlist for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete their portfolio watchlist" on public.portfolio_watchlist for delete to authenticated using (auth.uid() = user_id);
 
-create policy "Users can read their portfolio trades" on public.portfolio_trades for select using (auth.uid() = user_id);
-create policy "Users can insert their portfolio trades" on public.portfolio_trades for insert with check (auth.uid() = user_id);
-create policy "Users can update their portfolio trades" on public.portfolio_trades for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their portfolio trades" on public.portfolio_trades for delete using (auth.uid() = user_id);
+create policy "Users can read their portfolio trades" on public.portfolio_trades for select to authenticated using (auth.uid() = user_id);
+create policy "Users can insert their portfolio trades" on public.portfolio_trades for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can update their portfolio trades" on public.portfolio_trades for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete their portfolio trades" on public.portfolio_trades for delete to authenticated using (auth.uid() = user_id);
 
-create policy "Users can read their portfolio AI settings" on public.portfolio_ai_settings for select using (auth.uid() = user_id);
-create policy "Users can insert their portfolio AI settings" on public.portfolio_ai_settings for insert with check (auth.uid() = user_id);
-create policy "Users can update their portfolio AI settings" on public.portfolio_ai_settings for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their portfolio AI settings" on public.portfolio_ai_settings for delete using (auth.uid() = user_id);
+create policy "Users can read their portfolio AI settings" on public.portfolio_ai_settings for select to authenticated using (auth.uid() = user_id);
+create policy "Users can insert their portfolio AI settings" on public.portfolio_ai_settings for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can update their portfolio AI settings" on public.portfolio_ai_settings for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete their portfolio AI settings" on public.portfolio_ai_settings for delete to authenticated using (auth.uid() = user_id);
 
-create policy "Users can read their portfolio snapshots" on public.portfolio_snapshots for select using (auth.uid() = user_id);
-create policy "Users can insert their portfolio snapshots" on public.portfolio_snapshots for insert with check (auth.uid() = user_id);
-create policy "Users can update their portfolio snapshots" on public.portfolio_snapshots for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their portfolio snapshots" on public.portfolio_snapshots for delete using (auth.uid() = user_id);
+create policy "Users can read their portfolio snapshots" on public.portfolio_snapshots for select to authenticated using (auth.uid() = user_id);
+create policy "Users can insert their portfolio snapshots" on public.portfolio_snapshots for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can update their portfolio snapshots" on public.portfolio_snapshots for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete their portfolio snapshots" on public.portfolio_snapshots for delete to authenticated using (auth.uid() = user_id);
 
 create index if not exists portfolios_user_id_idx on public.portfolios (user_id, archived, created_at desc);
 create index if not exists portfolio_holdings_user_id_idx on public.portfolio_holdings (user_id, portfolio_id);
