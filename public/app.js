@@ -304,7 +304,8 @@ async function createPortfolio(event) {
   const userId = state.session.user.id;
   const name = elements.portfolioName.value.trim();
   const accountType = elements.portfolioType.value;
-  const cash = Math.max(0, Number(elements.portfolioCash.value) || STARTING_CASH);
+  const cashInput = String(elements.portfolioCash.value).trim();
+  const cash = cashInput === "" ? STARTING_CASH : Math.max(0, Number(cashInput) || 0);
   if (!name) return;
   if (accountType === "crypto") {
     setStatus("Crypto portfolios are planned for the next phase.", "warning");
