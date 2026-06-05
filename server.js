@@ -344,6 +344,26 @@ async function resolveYahooSymbol(symbol) {
   return { suggestions };
 }
 
+async function searchHandler(req, res) {
+  const query = String(getQuery(req).get("q") || "").trim();
+  if (!query) {
+    return json(res, 200, { suggestions: [] });
+  }
+
+  try {
+    const { suggestions } = await resolveYahooSymbol(query);
+    return json(res, 200, { suggestions });
+  } catch (error) {
+    const symbol = cleanSymbol(query);
+    return json(res, 200, {
+      warning: error.message,
+      suggestions: symbol
+        ? [{ symbol, name: STOCK_NAMES[symbol] || symbol, exchange: "", quoteType: "EQUITY" }]
+        : []
+    });
+  }
+}
+
 function invalidSymbolError(symbol, cause, suggestions = []) {
   const error = new Error(`No stock symbol found for ${symbol}`);
   error.invalidSymbol = symbol;
@@ -885,12 +905,62 @@ async function paperTradeHandler(req, res) {
   try {
     const actor = await paperActor(req, "paper:trade");
     const body = await readJsonBody(req);
+    const portfolioId = String(body.portfolioId || body.portfolio_id || "");
     const symbol = cleanSymbol(body.symbol);
     const side = String(body.side || "").toLowerCase();
     const shares = Math.max(0, Number(body.shares) || 0);
 
-    if (!symbol || !["buy", "sell"].includes(side) || !shares) {
-      return json(res, 400, { error: "Provide symbol, side, and shares." });
+    if (!portfolioId || !symbol || !["buy", "sell"].includes(side) || !shares) {
+      return json(res, 400, { error: "Provide portfolioId, symbol, side, and shares." });
+    }
+
+    const portfolios = await actorRequest(
+      actor,
+      `/rest/v1/portfolios?select=id,name,account_type,cash,user_id&user_id=eq.${encodeURIComponent(
+        actor.user.id
+      )}&id=eq.${encodeURIComponent(portfolioId)}&archived=eq.false&limit=1`,
+      { method: "GET" }
+    );
+    const portfolio = portfolios?.[0];
+    if (!portfolio) {
+      return json(res, 404, { error: "Portfolio not found." });
+    }
+    if (portfolio.account_type !== "us_stock") {
+      return json(res, 400, { error: "Claude trading currently supports US stock portfolios only." });
+    }
+
+    if (actor.admin) {
+      const settings = await actorRequest(
+        actor,
+        `/rest/v1/portfolio_ai_settings?select=enabled,allow_buy,allow_sell,max_trade_percent,max_daily_trades&portfolio_id=eq.${encodeURIComponent(
+          portfolioId
+        )}&user_id=eq.${encodeURIComponent(actor.user.id)}&limit=1`,
+        { method: "GET" }
+      );
+      const setting = settings?.[0];
+      if (!setting?.enabled) {
+        return json(res, 403, { error: "Claude is not enabled for this portfolio." });
+      }
+      if (side === "buy" && setting.allow_buy === false) {
+        return json(res, 403, { error: "Claude buy orders are disabled for this portfolio." });
+      }
+      if (side === "sell" && setting.allow_sell === false) {
+        return json(res, 403, { error: "Claude sell orders are disabled for this portfolio." });
+      }
+      const since = new Date();
+      since.setUTCHours(0, 0, 0, 0);
+      const todaysTrades = await actorRequest(
+        actor,
+        `/rest/v1/portfolio_trades?select=id&portfolio_id=eq.${encodeURIComponent(
+          portfolioId
+        )}&user_id=eq.${encodeURIComponent(actor.user.id)}&source=eq.ai&created_at=gte.${encodeURIComponent(
+          since.toISOString()
+        )}`,
+        { method: "GET" }
+      );
+      if ((todaysTrades || []).length >= (Number(setting.max_daily_trades) || 5)) {
+        return json(res, 403, { error: "Claude daily trade limit reached for this portfolio." });
+      }
     }
 
     const quote = await quoteForSymbol(symbol);
@@ -899,53 +969,118 @@ async function paperTradeHandler(req, res) {
       return json(res, 422, { error: `No usable market price for ${symbol}.` });
     }
 
-    const account = await getAccount(actor);
-    const position = await getPosition(actor, quote.symbol);
+    const holdingRows = await actorRequest(
+      actor,
+      `/rest/v1/portfolio_holdings?select=symbol,quantity,avg_cost,name&portfolio_id=eq.${encodeURIComponent(
+        portfolioId
+      )}&user_id=eq.${encodeURIComponent(actor.user.id)}&symbol=eq.${encodeURIComponent(quote.symbol)}&limit=1`,
+      { method: "GET" }
+    );
+    const holding = holdingRows?.[0] || { symbol: quote.symbol, quantity: 0, avg_cost: 0 };
+    let cash = Number(portfolio.cash) || 0;
+    let quantity = Number(holding.quantity) || 0;
+    let avgCost = Number(holding.avg_cost) || 0;
     let realizedPnl = 0;
 
     if (side === "buy") {
       const cost = shares * price;
-      if (cost > account.cash) {
+      if (actor.admin) {
+        const settings = await actorRequest(
+          actor,
+          `/rest/v1/portfolio_ai_settings?select=max_trade_percent&portfolio_id=eq.${encodeURIComponent(
+            portfolioId
+          )}&user_id=eq.${encodeURIComponent(actor.user.id)}&limit=1`,
+          { method: "GET" }
+        );
+        const maxPercent = Number(settings?.[0]?.max_trade_percent) || 10;
+        const holdingRowsForValue = await actorRequest(
+          actor,
+          `/rest/v1/portfolio_holdings?select=symbol,quantity,avg_cost&portfolio_id=eq.${encodeURIComponent(
+            portfolioId
+          )}&user_id=eq.${encodeURIComponent(actor.user.id)}`,
+          { method: "GET" }
+        );
+        const estimatedHoldings = (holdingRowsForValue || []).reduce(
+          (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.avg_cost) || 0),
+          0
+        );
+        const maxTrade = (cash + estimatedHoldings) * (maxPercent / 100);
+        if (cost > maxTrade) {
+          return json(res, 403, { error: `Claude trade exceeds ${maxPercent}% portfolio limit.` });
+        }
+      }
+      if (cost > cash) {
         return json(res, 400, { error: `Not enough paper cash to buy ${shares} ${quote.symbol}.` });
       }
-      const existingCost = position.shares * position.avgCost;
-      position.shares += shares;
-      position.avgCost = (existingCost + cost) / position.shares;
-      account.cash -= cost;
+      const existingCost = quantity * avgCost;
+      quantity += shares;
+      avgCost = (existingCost + cost) / quantity;
+      cash -= cost;
     } else {
-      if (shares > position.shares) {
-        return json(res, 400, { error: `You only have ${position.shares.toLocaleString()} ${quote.symbol} shares.` });
+      if (shares > quantity) {
+        return json(res, 400, { error: `You only have ${quantity.toLocaleString()} ${quote.symbol} shares.` });
       }
-      realizedPnl = shares * (price - position.avgCost);
-      position.shares -= shares;
-      account.cash += shares * price;
-      account.realizedPnl += realizedPnl;
-      if (position.shares <= 0) {
-        position.shares = 0;
-        position.avgCost = 0;
-      }
+      realizedPnl = shares * (price - avgCost);
+      quantity -= shares;
+      cash += shares * price;
     }
 
-    account.cash = Math.max(0, Number(account.cash.toFixed(2)));
-    account.realizedPnl = Number(account.realizedPnl.toFixed(2));
-    position.shares = Math.max(0, Number(position.shares.toFixed(6)));
-    position.avgCost = Math.max(0, Number(position.avgCost.toFixed(4)));
+    cash = Math.max(0, Number(cash.toFixed(2)));
+    quantity = Math.max(0, Number(quantity.toFixed(6)));
+    avgCost = Math.max(0, Number(avgCost.toFixed(4)));
 
-    await saveAccount(actor, account);
-    await savePosition(actor, quote.symbol, position);
-    if (side === "buy" && position.shares > 0) {
-      await ensureFirstWatchlistSymbol(actor, quote.symbol);
+    await actorRequest(actor, `/rest/v1/portfolios?id=eq.${encodeURIComponent(portfolioId)}`, {
+      method: "PATCH",
+      headers: { prefer: "return=minimal" },
+      body: JSON.stringify({ cash, updated_at: new Date().toISOString() })
+    });
+    if (quantity > 0) {
+      await actorRequest(actor, "/rest/v1/portfolio_holdings?on_conflict=portfolio_id,symbol", {
+        method: "POST",
+        headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({
+          portfolio_id: portfolioId,
+          user_id: actor.user.id,
+          symbol: quote.symbol,
+          asset_type: "us_stock",
+          name: quote.shortName || quote.symbol,
+          quantity,
+          avg_cost: avgCost,
+          updated_at: new Date().toISOString()
+        })
+      });
+    } else {
+      await actorRequest(
+        actor,
+        `/rest/v1/portfolio_holdings?portfolio_id=eq.${encodeURIComponent(portfolioId)}&symbol=eq.${encodeURIComponent(
+          quote.symbol
+        )}`,
+        { method: "DELETE", headers: { prefer: "return=minimal" } }
+      );
     }
-    await actorRequest(actor, "/rest/v1/trades", {
+    if (side === "buy") {
+      await actorRequest(
+        actor,
+        `/rest/v1/portfolio_watchlist?portfolio_id=eq.${encodeURIComponent(portfolioId)}&symbol=eq.${encodeURIComponent(
+          quote.symbol
+        )}`,
+        { method: "DELETE", headers: { prefer: "return=minimal" } }
+      );
+    }
+    await actorRequest(actor, "/rest/v1/portfolio_trades", {
       method: "POST",
       headers: { prefer: "return=minimal" },
       body: JSON.stringify({
+        portfolio_id: portfolioId,
         user_id: actor.user.id,
         symbol: quote.symbol,
-        side,
-        shares,
+        asset_type: "us_stock",
+        trade_type: side,
+        quantity: shares,
         price,
-        realized_pnl: realizedPnl
+        total: shares * price,
+        realized_pnl: realizedPnl,
+        source: actor.admin ? "ai" : "manual"
       })
     });
 
@@ -958,11 +1093,14 @@ async function paperTradeHandler(req, res) {
         price,
         realizedPnl: Number(realizedPnl.toFixed(2))
       },
-      account,
+      portfolio: {
+        id: portfolioId,
+        cash
+      },
       position: {
         symbol: quote.symbol,
-        shares: position.shares,
-        avgCost: position.avgCost
+        shares: quantity,
+        avgCost
       },
       quote
     });
@@ -979,26 +1117,43 @@ async function paperAccountHandler(req, res) {
 
   try {
     const actor = await paperActor(req, "paper:read");
-    const account = await getAccount(actor);
-    const positions = await actorRequest(
+    const portfolioId = String(getQuery(req).get("portfolioId") || getQuery(req).get("portfolio_id") || "");
+    const portfolioFilter = portfolioId ? `&id=eq.${encodeURIComponent(portfolioId)}` : "";
+    const portfolios = await actorRequest(
       actor,
-      `/rest/v1/positions?select=symbol,shares,avg_cost&user_id=eq.${encodeURIComponent(actor.user.id)}&order=symbol.asc`,
-      { method: "GET" }
-    );
-    const trades = await actorRequest(
-      actor,
-      `/rest/v1/trades?select=symbol,side,shares,price,realized_pnl,created_at&user_id=eq.${encodeURIComponent(
+      `/rest/v1/portfolios?select=id,name,account_type,cash,starting_cash,base_currency&user_id=eq.${encodeURIComponent(
         actor.user.id
-      )}&order=created_at.desc&limit=25`,
+      )}&archived=eq.false${portfolioFilter}&order=created_at.asc`,
       { method: "GET" }
     );
+    const ids = (portfolios || []).map((portfolio) => portfolio.id);
+    const positions = ids.length
+      ? await actorRequest(
+          actor,
+          `/rest/v1/portfolio_holdings?select=portfolio_id,symbol,quantity,avg_cost,name&portfolio_id=in.(${ids
+            .map(encodeURIComponent)
+            .join(",")})&user_id=eq.${encodeURIComponent(actor.user.id)}&order=symbol.asc`,
+          { method: "GET" }
+        )
+      : [];
+    const trades = ids.length
+      ? await actorRequest(
+          actor,
+          `/rest/v1/portfolio_trades?select=portfolio_id,symbol,trade_type,quantity,price,realized_pnl,source,created_at&portfolio_id=in.(${ids
+            .map(encodeURIComponent)
+            .join(",")})&user_id=eq.${encodeURIComponent(actor.user.id)}&order=created_at.desc&limit=50`,
+          { method: "GET" }
+        )
+      : [];
 
     return json(res, 200, {
       source: "paper-broker",
-      account,
+      portfolios: portfolios || [],
       positions: (positions || []).map((position) => ({
+        portfolioId: position.portfolio_id,
         symbol: cleanSymbol(position.symbol),
-        shares: Number(position.shares) || 0,
+        name: position.name || cleanSymbol(position.symbol),
+        shares: Number(position.quantity) || 0,
         avgCost: Number(position.avg_cost) || 0
       })),
       trades: trades || []
@@ -1016,9 +1171,11 @@ async function clearPaperTradesHandler(req, res) {
 
   try {
     const actor = await paperActor(req, "paper:trade");
+    const portfolioId = String((req.method === "POST" ? (await readJsonBody(req)).portfolioId : getQuery(req).get("portfolioId")) || "");
+    const portfolioFilter = portfolioId ? `&portfolio_id=eq.${encodeURIComponent(portfolioId)}` : "";
     await actorRequest(
       actor,
-      `/rest/v1/trades?user_id=eq.${encodeURIComponent(actor.user.id)}`,
+      `/rest/v1/portfolio_trades?user_id=eq.${encodeURIComponent(actor.user.id)}${portfolioFilter}`,
       {
         method: "DELETE",
         headers: { prefer: "return=minimal" }
@@ -1152,6 +1309,7 @@ const server = http.createServer(async (req, res) => {
     const path = new URL(req.url, `http://${req.headers.host}`).pathname;
 
     if (path === "/api/quotes") return quotesHandler(req, res);
+    if (path === "/api/search") return searchHandler(req, res);
     if (path === "/api/performance") return performanceHandler(req, res);
     if (path === "/api/history") return historyHandler(req, res);
     if (path === "/api/news") return newsHandler(req, res);

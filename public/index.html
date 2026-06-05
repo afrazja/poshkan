@@ -9,63 +9,31 @@
   </head>
   <body>
     <main class="shell">
-      <section id="auth-panel" class="auth-panel" aria-live="polite">
-        <div class="auth-brand">
+      <section id="auth-panel" class="auth-screen" aria-live="polite">
+        <div class="auth-copy">
           <div class="brand-lockup">
             <span class="brand-mark" aria-hidden="true"></span>
             <div>
-              <p class="brand-kicker">Virtual market lab</p>
+              <p class="brand-kicker">Paper market simulator</p>
               <h1>Poshkan</h1>
             </div>
           </div>
-          <div class="auth-copy">
-            <h2>Track stocks, test ideas, and follow the market without risking real money.</h2>
-            <p>
-              Build watchlists, monitor price movement, read related news, and practice buying or selling stocks with a
-              virtual portfolio.
-            </p>
-          </div>
-          <div class="auth-feature-grid" aria-label="Platform highlights">
-            <div>
-              <strong>Live watchlists</strong>
-              <span>Group tickers, reorder cards, and keep your setup saved.</span>
-            </div>
-            <div>
-              <strong>Paper trading</strong>
-              <span>Start with $100,000 and track realized and open profit.</span>
-            </div>
-            <div>
-              <strong>Charts and news</strong>
-              <span>Review price history, indicators, alerts, and related headlines.</span>
-            </div>
-          </div>
-          <div class="auth-preview" aria-hidden="true">
-            <div class="preview-head">
-              <span>Portfolio snapshot</span>
-              <strong>+$1,248.60</strong>
-            </div>
-            <div class="preview-chart">
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-            <div class="preview-row">
-              <span>AAPL</span>
-              <strong>$312.51</strong>
-              <em>+0.53%</em>
-            </div>
-            <div class="preview-row">
-              <span>MSFT</span>
-              <strong>$472.18</strong>
-              <em>+0.24%</em>
-            </div>
+          <h2>Build virtual portfolios, mirror starting holdings, and practice trades with paper money.</h2>
+          <p>
+            Create separate stock portfolios for different ideas, compare performance, keep trade history, and connect
+            Claude only to portfolios you approve.
+          </p>
+          <div class="auth-highlights">
+            <span>Multiple paper portfolios</span>
+            <span>Stock search by name or symbol</span>
+            <span>AI guardrails per portfolio</span>
           </div>
         </div>
         <form id="auth-form" class="auth-form" autocomplete="on">
-          <div class="auth-form-head">
-            <p class="brand-kicker">Account access</p>
-            <h2>Sign in or create an account</h2>
-          </div>
-          <div class="auth-mode-switch" aria-label="Authentication mode">
-            <button type="button" data-auth-mode="signin" class="active">Sign in</button>
+          <p class="eyebrow">Account access</p>
+          <h2 id="auth-title">Sign in</h2>
+          <div class="segmented" aria-label="Authentication mode">
+            <button type="button" class="active" data-auth-mode="signin">Sign in</button>
             <button type="button" data-auth-mode="signup">Create account</button>
           </div>
           <label>
@@ -76,318 +44,94 @@
             <span>Password</span>
             <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required />
           </label>
-          <div id="signup-fields" class="signup-fields" hidden>
+          <div id="signup-fields" class="stack" hidden>
             <label>
               <span>User name</span>
-              <input id="auth-username" type="text" autocomplete="nickname" maxlength="32" placeholder="Your name" />
-            </label>
-            <label>
-              <span>Starting paper money</span>
-              <input id="auth-starting-cash" type="number" min="1000" max="10000000" step="1000" value="100000" />
-            </label>
-            <label>
-              <span>Trading experience</span>
-              <select id="auth-experience">
-                <option value="">Choose one</option>
-                <option value="new">New to trading</option>
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
+              <input id="auth-username" type="text" autocomplete="nickname" maxlength="40" placeholder="Your name" />
             </label>
           </div>
-          <div class="auth-actions">
-            <button id="auth-submit" type="submit">Sign in</button>
-          </div>
-          <p id="auth-message"></p>
+          <button id="auth-submit" class="primary-action" type="submit">Sign in</button>
+          <p id="auth-message" class="form-message"></p>
         </form>
       </section>
 
-      <section id="dashboard-shell" hidden>
-      <section class="topbar" aria-label="Dashboard controls">
-        <div class="brand-lockup compact">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <div>
-            <p class="brand-kicker">Live market watch</p>
-            <h1>Poshkan</h1>
+      <section id="app-shell" class="app-shell" hidden>
+        <header class="topbar">
+          <button class="brand-button" type="button" data-nav="portfolios" title="Go to portfolios">
+            <span class="brand-mark small" aria-hidden="true"></span>
+            <span>
+              <strong>Poshkan</strong>
+              <small>Paper simulator</small>
+            </span>
+          </button>
+          <nav class="global-nav" aria-label="Main navigation">
+            <button type="button" class="active" data-nav="portfolios" title="View and switch portfolios">Portfolios</button>
+            <button type="button" data-nav="compare" title="Compare holdings and watchlist performance">Compare</button>
+            <button type="button" data-nav="history" title="Review trades across portfolios">History</button>
+            <button type="button" data-nav="ai" title="Manage Claude paper-trading access">AI Trading</button>
+          </nav>
+          <div class="account-menu">
+            <span id="account-name"></span>
+            <button id="settings-button" class="icon-button" type="button" title="Account settings">Settings</button>
+            <button id="sign-out" class="ghost-action" type="button" title="Sign out">Sign out</button>
           </div>
-        </div>
-        <div class="topbar-account">
-          <span id="account-identity" class="account-identity"></span>
-          <button id="sign-out" class="sign-out" type="button">Sign out</button>
-        </div>
-      </section>
-      <nav class="app-nav" aria-label="Main app navigation">
-        <button type="button" class="active" data-app-nav="cards">Portfolio</button>
-        <button type="button" data-app-nav="watchlist">Watchlist</button>
-        <button id="open-comparison" type="button" data-app-nav="table">Compare</button>
-        <button id="open-history" type="button" data-app-nav="history">History</button>
-        <button id="open-settings" type="button" data-app-nav="settings">Settings</button>
-      </nav>
-      <section class="portfolio-home-head" aria-label="Portfolio overview">
-        <div>
-          <p class="eyebrow">Portfolio</p>
-          <h2 id="portfolio-home-title">Paper Portfolio</h2>
-          <span id="portfolio-home-copy">Track cash, invested value, and practice positions from one clean home screen.</span>
-        </div>
-        <div class="portfolio-home-actions">
-          <button id="export-portfolio" type="button">Export Excel</button>
-        </div>
-      </section>
-      <section id="account-summary" class="account-summary" aria-live="polite"></section>
-      <section id="portfolio-health" class="portfolio-health" aria-live="polite"></section>
-      <section class="portfolio-mode" aria-label="Portfolio mode">
-        <button type="button" class="active" data-portfolio-mode="paper">
-          <span>Paper Trading</span>
-          <small>Practice</small>
-        </button>
-        <button type="button" data-portfolio-mode="real">
-          <span>Real Portfolio</span>
-          <small>Tracker</small>
-        </button>
-      </section>
-      <section id="mode-context" class="mode-context paper" aria-live="polite"></section>
+        </header>
 
-      <section class="status-row" aria-live="polite">
-        <div>
-          <span class="pulse"></span>
-          <span id="market-status">Connecting to market data...</span>
-        </div>
-        <div id="last-updated">Last update: --</div>
-      </section>
-      <div id="alert-tray" class="alert-tray" aria-live="polite"></div>
+        <p id="app-status" class="app-status" aria-live="polite"></p>
 
-      <section class="workspace">
-        <aside class="watchlist" aria-label="Stock watchlist">
-          <div class="panel-title">
-            <h2 id="portfolio-list-title">Portfolio Stocks</h2>
-            <div class="panel-actions">
-              <button id="refresh-now" title="Refresh quotes">Refresh</button>
-            </div>
-          </div>
-          <div class="watchlist-add">
-            <span id="watchlist-add-title">Add stock to selected group</span>
-            <form id="add-stock-form" class="add-stock" autocomplete="off">
-              <label class="sr-only" for="stock-symbol">Stock symbol</label>
-              <input id="stock-symbol" name="symbol" placeholder="AAPL" maxlength="12" />
-              <button type="submit" title="Add stock">+</button>
-            </form>
-            <form id="real-position-form" class="real-position-form" autocomplete="off" hidden>
-              <div class="real-position-shared">
-                <label>
-                  <span>Symbol</span>
-                  <input id="real-symbol" name="symbol" placeholder="AAPL" maxlength="12" />
-                </label>
-                <label>
-                  <span>Shares</span>
-                  <input id="real-shares" name="shares" type="number" min="0" step="0.0001" inputmode="decimal" />
-                </label>
-              </div>
-              <div class="real-action-card">
-                <strong>Add existing holding</strong>
-                <label>
-                  <span>Average cost</span>
-                  <input id="real-avg-cost" name="avgCost" type="number" min="0" step="0.01" inputmode="decimal" />
-                </label>
-                <button type="submit" name="realAction" value="set">Set holding</button>
-              </div>
-              <div class="real-action-card live">
-                <strong>Buy at live quote</strong>
-                <span class="real-action-note">Uses the latest available market price.</span>
-                <button type="submit" name="realAction" value="buy-live">Buy live</button>
-              </div>
-            </form>
-            <p id="add-stock-message" class="add-stock-message" aria-live="polite"></p>
-          </div>
-          <div id="group-label" class="group-label">Groups</div>
-          <div id="group-tabs" class="group-tabs" aria-label="Watchlist groups"></div>
-          <label class="stock-search" for="stock-search">
-            <span>Search current stocks</span>
-            <input id="stock-search" type="search" placeholder="Search symbol or name" autocomplete="off" />
-          </label>
-          <div id="stock-list" class="stock-list"></div>
-        </aside>
+        <section id="portfolios-view" class="page"></section>
+        <section id="portfolio-view" class="page" hidden></section>
+        <section id="stock-view" class="page" hidden></section>
+        <section id="compare-view" class="page" hidden></section>
+        <section id="history-view" class="page" hidden></section>
+        <section id="ai-view" class="page" hidden></section>
+        <section id="settings-view" class="page" hidden></section>
 
-        <button
-          id="toggle-details"
-          class="details-toggle"
-          type="button"
-          aria-label="Hide chart and news panel"
-          aria-expanded="true"
-        >
-          &rsaquo;
-        </button>
-
-        <section class="details" aria-label="Selected stock details">
-          <button id="back-to-watchlist" class="mobile-detail-back" type="button">Back to watchlist</button>
-          <div class="quote-hero">
-            <div>
-              <p id="selected-name" class="eyebrow">Select a stock</p>
-              <h2 id="selected-symbol">--</h2>
-            </div>
-            <div class="price-block">
-              <span id="selected-price">--</span>
-              <small id="selected-change">--</small>
-            </div>
-          </div>
-          <div id="selected-position" class="selected-position"></div>
-
-          <div class="chart-head">
-            <div>
-              <h2>Price Chart</h2>
-              <span id="chart-period-label">1D price history</span>
-            </div>
-            <div class="period-control" aria-label="Chart period">
-              <button type="button" data-period="1h">1H</button>
-              <button type="button" data-period="4h">4H</button>
-              <button type="button" data-period="1d" class="active">1D</button>
-              <button type="button" data-period="5d">5D</button>
-              <button type="button" data-period="1mo">1M</button>
-              <button type="button" data-period="6mo">6M</button>
-              <button type="button" data-period="1y">1Y</button>
-            </div>
-            <form id="custom-period-form" class="custom-period" autocomplete="off">
-              <label class="sr-only" for="custom-period-amount">Custom period amount</label>
-              <input id="custom-period-amount" type="number" min="1" max="365" value="2" />
-              <label class="sr-only" for="custom-period-unit">Custom period unit</label>
-              <select id="custom-period-unit">
-                <option value="hours">hours</option>
-                <option value="days" selected>days</option>
-                <option value="months">months</option>
-              </select>
-              <button type="submit">Apply</button>
-            </form>
-            <div class="chart-tools" aria-label="Chart tools">
-              <div class="mode-control" aria-label="Chart mode">
-                <button type="button" data-chart-mode="line" class="active">Line</button>
-                <button type="button" data-chart-mode="candles">Candles</button>
-              </div>
-              <label class="chart-toggle">
-                <input id="show-ma" type="checkbox" checked />
-                <span>MA</span>
-              </label>
-              <label class="chart-toggle">
-                <input id="show-volume" type="checkbox" checked />
-                <span>Vol</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="chart-wrap">
-            <canvas id="price-chart" width="960" height="320" aria-label="Intraday price chart"></canvas>
-          </div>
-
-          <div class="news-head">
-            <h2>Related News</h2>
-            <span id="news-source">Click a stock to load headlines</span>
-          </div>
-          <div id="news-list" class="news-list"></div>
-          </section>
-        </section>
-      </section>
-
-      <section id="comparison-page" class="comparison-page" aria-label="Stock comparison table" hidden>
-        <div class="comparison-page-head">
-          <div>
-            <p id="comparison-page-kicker" class="eyebrow">Paper comparison table</p>
-            <h2 id="comparison-page-title">Paper Stock Performance</h2>
-            <span id="comparison-period-label">4 days paper performance</span>
-          </div>
-          <div class="comparison-page-actions">
-            <button id="refresh-comparison" type="button">Update</button>
-            <button id="back-to-cards" type="button">Back to portfolio</button>
-          </div>
-        </div>
-        <form id="comparison-controls" class="comparison-controls" autocomplete="off">
-          <label>
-            <span>Period</span>
-            <input id="comparison-amount" type="number" min="1" max="365" value="4" />
-          </label>
-          <label>
-            <span>Unit</span>
-            <select id="comparison-unit">
-              <option value="hours">Hours</option>
-              <option value="days" selected>Days</option>
-              <option value="months">Months</option>
-            </select>
-          </label>
-          <label>
-            <span>Sort</span>
-            <select id="comparison-sort">
-              <option value="performance">Performance</option>
-              <option value="value">Value</option>
-              <option value="pnl">P/L</option>
-              <option value="pnlPercent">P/L %</option>
-              <option value="price">Price</option>
-              <option value="symbol">Symbol</option>
-            </select>
-          </label>
-        </form>
-        <div id="comparison-table" class="comparison-table"></div>
-      </section>
-
-      <section id="history-page" class="history-page" aria-label="Trade history" hidden>
-        <div class="comparison-page-head">
-          <div>
-            <p id="history-page-kicker" class="eyebrow">Paper trade history</p>
-            <h2 id="history-page-title">Paper Buys and Sales</h2>
-            <span id="history-page-description">Review practice trades made with virtual money.</span>
-          </div>
-          <div class="comparison-page-actions">
-            <button id="refresh-history" type="button">Update</button>
-            <button id="back-from-history" type="button">Back to portfolio</button>
-          </div>
-        </div>
-        <div class="history-grid">
-          <div id="paper-trade-history" class="trade-history paper-trade-history"></div>
-          <div id="real-trade-history" class="trade-history real-trade-history"></div>
-        </div>
-      </section>
-
-      <section id="settings-page" class="settings-page" aria-label="Settings" hidden>
-        <div class="comparison-page-head">
-          <div>
-            <p class="eyebrow">Settings</p>
-            <h2>Account and Integrations</h2>
-            <span>Manage features that are useful sometimes but should not crowd the stock dashboard.</span>
-          </div>
-          <div class="comparison-page-actions">
-            <button id="back-from-settings" type="button">Back to portfolio</button>
-          </div>
-        </div>
-        <section id="settings-overview" class="settings-overview" aria-live="polite"></section>
-        <section id="api-key-panel" class="api-key-panel" aria-live="polite">
-          <div>
-            <p class="eyebrow">Claude paper API</p>
-            <h2>Paper trading key</h2>
-            <span>Generate a limited key Claude can use for fake portfolio trades.</span>
-          </div>
-          <button id="create-api-key" type="button">Generate key</button>
-          <div id="api-key-secret" class="api-key-secret" hidden></div>
-          <div id="api-key-list" class="api-key-list"></div>
-          <p id="api-key-message" class="api-key-message"></p>
-        </section>
-      </section>
-
-      <nav class="mobile-nav" aria-label="Mobile app navigation" hidden>
-        <button type="button" data-mobile-nav="cards">
-          <span>Portfolio</span>
-        </button>
-        <button type="button" data-mobile-nav="watchlist">
-          <span>Watchlist</span>
-        </button>
-        <button type="button" data-mobile-nav="table">
-          <span>Compare</span>
-        </button>
-        <button type="button" data-mobile-nav="history">
-          <span>History</span>
-        </button>
-        <button type="button" data-mobile-nav="settings">
-          <span>Settings</span>
-        </button>
-      </nav>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <button type="button" class="active" data-nav="portfolios">Portfolios</button>
+          <button type="button" data-nav="compare">Compare</button>
+          <button type="button" data-nav="history">History</button>
+          <button type="button" data-nav="ai">AI</button>
+        </nav>
       </section>
     </main>
+
+    <dialog id="portfolio-dialog" class="modal">
+      <form id="portfolio-form" method="dialog">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">New portfolio</p>
+            <h2>Create paper portfolio</h2>
+          </div>
+          <button type="button" class="icon-button" data-close-dialog title="Close">x</button>
+        </div>
+        <label>
+          <span>Portfolio name</span>
+          <input id="portfolio-name" required maxlength="60" placeholder="AI Trading Test" />
+        </label>
+        <label>
+          <span>Type</span>
+          <select id="portfolio-type">
+            <option value="us_stock">US Stocks</option>
+            <option value="crypto" disabled>Crypto - coming soon</option>
+          </select>
+        </label>
+        <label>
+          <span>Starting cash</span>
+          <input id="portfolio-cash" type="number" min="0" step="100" value="100000" />
+        </label>
+        <label>
+          <span>Starting holdings, optional</span>
+          <textarea
+            id="portfolio-starting-holdings"
+            rows="5"
+            placeholder="AAPL, 9, 204.90&#10;NVDA, 10, 126.44"
+          ></textarea>
+        </label>
+        <p class="help-text">Use one holding per line: symbol, quantity, average cost.</p>
+        <button class="primary-action" type="submit">Create portfolio</button>
+      </form>
+    </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/app.js" type="module"></script>

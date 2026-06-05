@@ -1,1201 +1,102 @@
-const DEFAULT_SYMBOLS = ["AAPL", "MSFT", "NVDA", "TSLA"];
-const STORAGE_KEY = "stock-dashboard-symbols";
-const GROUPS_KEY = "stock-dashboard-groups";
-const ACTIVE_GROUP_KEY = "stock-dashboard-active-group";
-const PORTFOLIO_MODE_KEY = "stock-dashboard-portfolio-mode";
-const REAL_POSITIONS_KEY = "stock-dashboard-real-positions";
-const REAL_WATCHLIST_KEY = "stock-dashboard-real-watchlist";
-const REAL_TRANSACTIONS_KEY = "stock-dashboard-real-transactions";
-const REAL_REMOVED_SYMBOLS_KEY = "stock-dashboard-real-removed-symbols";
-const REAL_ACTIVE_TAB_KEY = "stock-dashboard-real-active-tab";
-const CASH_KEY = "stock-dashboard-paper-cash";
-const REALIZED_PNL_KEY = "stock-dashboard-realized-pnl";
-const PAPER_TRANSACTIONS_KEY = "stock-dashboard-paper-transactions";
-const ALERT_DIRECTIONS = new Set(["above", "below"]);
 const STARTING_CASH = 100000;
+const POPULAR_STOCKS = ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD"];
+const PERIODS = {
+  "1d": "1D",
+  "5d": "5D",
+  "1mo": "1M",
+  "6mo": "6M",
+  "1y": "1Y"
+};
 
 const state = {
-  groups: loadGroups(),
-  activeGroupId: localStorage.getItem(ACTIVE_GROUP_KEY) || "main",
-  portfolioMode: localStorage.getItem(PORTFOLIO_MODE_KEY) === "real" ? "real" : "paper",
-  realPositions: loadRealPositions(),
-  realWatchlist: loadRealWatchlist(),
-  realTransactions: loadRealTransactions(),
-  removedRealSymbols: loadRemovedRealSymbols(),
-  activeRealTab: localStorage.getItem(REAL_ACTIVE_TAB_KEY) === "watchlist" ? "watchlist" : "owned",
-  quotes: new Map(),
-  cash: loadAccountCash(),
-  realizedPnl: loadRealizedPnl(),
-  paperTransactions: loadPaperTransactions(),
-  selected: null,
-  creatingGroup: false,
-  renamingGroupId: null,
-  draggingSymbol: null,
-  authMode: "signin",
-  chartPeriod: localStorage.getItem("stock-dashboard-chart-period") || "1d",
-  customAmount: Number.parseInt(localStorage.getItem("stock-dashboard-custom-amount"), 10) || 2,
-  customUnit: localStorage.getItem("stock-dashboard-custom-unit") || "days",
-  comparisonAmount: Number.parseInt(localStorage.getItem("stock-dashboard-comparison-amount"), 10) || 4,
-  comparisonUnit: localStorage.getItem("stock-dashboard-comparison-unit") || "days",
-  comparisonSort: localStorage.getItem("stock-dashboard-comparison-sort") || "performance",
-  comparisonSortDirection: localStorage.getItem("stock-dashboard-comparison-sort-direction") === "asc" ? "asc" : "desc",
-  comparisonLoading: false,
-  mainPage: "portfolio",
-  comparisonPageOpen: false,
-  historyPageOpen: false,
-  settingsPageOpen: false,
-  mobileDetailOpen: false,
-  stockSearch: "",
-  performance: new Map(),
-  chartMode: localStorage.getItem("stock-dashboard-chart-mode") || "line",
-  showMA: localStorage.getItem("stock-dashboard-show-ma") !== "false",
-  showVolume: localStorage.getItem("stock-dashboard-show-volume") !== "false",
-  showDetailsPanel: false,
-  chartPoints: [],
-  chartHoverIndex: null,
-  alertEvents: [],
-  firedAlerts: new Set(),
   supabase: null,
   session: null,
-  paperApiKeysEnabled: false,
-  realPositionsCloudEnabled: false,
-  realTransactionsCloudEnabled: false,
-  cloudReady: false,
-  cloudSaving: false,
-  cloudSaveQueued: false,
-  realPortfolioTouched: false,
-  refreshMs: 30000,
-  paperSyncMs: 8000,
-  paperSyncing: false,
-  timer: null,
-  paperTimer: null
+  user: null,
+  page: "portfolios",
+  portfolioTab: "overview",
+  stockTab: "chart",
+  authMode: "signin",
+  portfolios: [],
+  holdings: new Map(),
+  watchlist: new Map(),
+  trades: new Map(),
+  aiSettings: new Map(),
+  quotes: new Map(),
+  performance: new Map(),
+  selectedPortfolioId: localStorage.getItem("poshkan-active-portfolio") || null,
+  selectedSymbol: null,
+  selectedSearchAsset: null,
+  chartPeriod: "1mo",
+  chartPoints: [],
+  searchResults: [],
+  compareSort: "symbol",
+  compareDirection: "asc",
+  apiKeys: [],
+  config: null,
+  loading: false
 };
 
 const elements = {
   authPanel: document.querySelector("#auth-panel"),
   authForm: document.querySelector("#auth-form"),
+  authTitle: document.querySelector("#auth-title"),
   authEmail: document.querySelector("#auth-email"),
   authPassword: document.querySelector("#auth-password"),
   authUsername: document.querySelector("#auth-username"),
-  authStartingCash: document.querySelector("#auth-starting-cash"),
-  authExperience: document.querySelector("#auth-experience"),
   signupFields: document.querySelector("#signup-fields"),
-  authModeButtons: document.querySelectorAll("[data-auth-mode]"),
   authSubmit: document.querySelector("#auth-submit"),
   authMessage: document.querySelector("#auth-message"),
-  dashboardShell: document.querySelector("#dashboard-shell"),
-  accountIdentity: document.querySelector("#account-identity"),
+  authModeButtons: document.querySelectorAll("[data-auth-mode]"),
+  appShell: document.querySelector("#app-shell"),
+  accountName: document.querySelector("#account-name"),
   signOut: document.querySelector("#sign-out"),
-  form: document.querySelector("#add-stock-form"),
-  realPositionForm: document.querySelector("#real-position-form"),
-  realSymbol: document.querySelector("#real-symbol"),
-  realShares: document.querySelector("#real-shares"),
-  realAvgCost: document.querySelector("#real-avg-cost"),
-  watchlistAddTitle: document.querySelector("#watchlist-add-title"),
-  groupLabel: document.querySelector("#group-label"),
-  appNavButtons: document.querySelectorAll("[data-app-nav]"),
-  portfolioModeButtons: document.querySelectorAll("[data-portfolio-mode]"),
-  modeContext: document.querySelector("#mode-context"),
-  mobileNav: document.querySelector(".mobile-nav"),
-  mobileNavButtons: document.querySelectorAll("[data-mobile-nav]"),
-  mobileAlertCount: document.querySelector("#mobile-alert-count"),
-  portfolioHealth: document.querySelector("#portfolio-health"),
-  input: document.querySelector("#stock-symbol"),
-  addStockMessage: document.querySelector("#add-stock-message"),
-  groupTabs: document.querySelector("#group-tabs"),
-  watchlist: document.querySelector(".watchlist"),
-  workspace: document.querySelector(".workspace"),
-  comparisonPage: document.querySelector("#comparison-page"),
-  historyPage: document.querySelector("#history-page"),
-  settingsPage: document.querySelector("#settings-page"),
-  portfolioHomeTitle: document.querySelector("#portfolio-home-title"),
-  portfolioHomeCopy: document.querySelector("#portfolio-home-copy"),
-  portfolioListTitle: document.querySelector("#portfolio-list-title"),
-  backToCards: document.querySelector("#back-to-cards"),
-  backToWatchlist: document.querySelector("#back-to-watchlist"),
-  backFromHistory: document.querySelector("#back-from-history"),
-  backFromSettings: document.querySelector("#back-from-settings"),
-  refreshHistoryPage: document.querySelector("#refresh-history"),
-  accountSummary: document.querySelector("#account-summary"),
-  settingsOverview: document.querySelector("#settings-overview"),
-  apiKeyPanel: document.querySelector("#api-key-panel"),
-  apiKeyCreate: document.querySelector("#create-api-key"),
-  apiKeySecret: document.querySelector("#api-key-secret"),
-  apiKeyList: document.querySelector("#api-key-list"),
-  apiKeyMessage: document.querySelector("#api-key-message"),
-  paperTradeHistory: document.querySelector("#paper-trade-history"),
-  realTradeHistory: document.querySelector("#real-trade-history"),
-  comparisonPageKicker: document.querySelector("#comparison-page-kicker"),
-  comparisonPageTitle: document.querySelector("#comparison-page-title"),
-  comparisonPeriodLabel: document.querySelector("#comparison-period-label"),
-  historyPageKicker: document.querySelector("#history-page-kicker"),
-  historyPageTitle: document.querySelector("#history-page-title"),
-  historyPageDescription: document.querySelector("#history-page-description"),
-  portfolioExport: document.querySelector("#export-portfolio"),
-  comparisonControls: document.querySelector("#comparison-controls"),
-  comparisonAmount: document.querySelector("#comparison-amount"),
-  comparisonUnit: document.querySelector("#comparison-unit"),
-  comparisonSort: document.querySelector("#comparison-sort"),
-  comparisonRefresh: document.querySelector("#refresh-comparison"),
-  comparisonTable: document.querySelector("#comparison-table"),
-  stockSearch: document.querySelector("#stock-search"),
-  stockList: document.querySelector("#stock-list"),
-  refresh: document.querySelector("#refresh-now"),
-  alertTray: document.querySelector("#alert-tray"),
-  marketStatus: document.querySelector("#market-status"),
-  lastUpdated: document.querySelector("#last-updated"),
-  selectedName: document.querySelector("#selected-name"),
-  selectedSymbol: document.querySelector("#selected-symbol"),
-  selectedPrice: document.querySelector("#selected-price"),
-  selectedChange: document.querySelector("#selected-change"),
-  selectedPosition: document.querySelector("#selected-position"),
-  details: document.querySelector(".details"),
-  toggleDetails: document.querySelector("#toggle-details"),
-  chart: document.querySelector("#price-chart"),
-  chartHead: document.querySelector(".chart-head"),
-  chartWrap: document.querySelector(".chart-wrap"),
-  chartPeriodLabel: document.querySelector("#chart-period-label"),
-  periodButtons: document.querySelectorAll(".period-control button"),
-  chartModeButtons: document.querySelectorAll("[data-chart-mode]"),
-  showMA: document.querySelector("#show-ma"),
-  showVolume: document.querySelector("#show-volume"),
-  customPeriodForm: document.querySelector("#custom-period-form"),
-  customPeriodAmount: document.querySelector("#custom-period-amount"),
-  customPeriodUnit: document.querySelector("#custom-period-unit"),
-  newsHead: document.querySelector(".news-head"),
-  newsList: document.querySelector("#news-list"),
-  newsSource: document.querySelector("#news-source")
+  settingsButton: document.querySelector("#settings-button"),
+  status: document.querySelector("#app-status"),
+  navButtons: document.querySelectorAll("[data-nav]"),
+  views: {
+    portfolios: document.querySelector("#portfolios-view"),
+    portfolio: document.querySelector("#portfolio-view"),
+    stock: document.querySelector("#stock-view"),
+    compare: document.querySelector("#compare-view"),
+    history: document.querySelector("#history-view"),
+    ai: document.querySelector("#ai-view"),
+    settings: document.querySelector("#settings-view")
+  },
+  dialog: document.querySelector("#portfolio-dialog"),
+  portfolioForm: document.querySelector("#portfolio-form"),
+  portfolioName: document.querySelector("#portfolio-name"),
+  portfolioType: document.querySelector("#portfolio-type"),
+  portfolioCash: document.querySelector("#portfolio-cash"),
+  portfolioStartingHoldings: document.querySelector("#portfolio-starting-holdings")
 };
 
-const PERIOD_LABELS = {
-  "1h": "1 hour",
-  "4h": "4 hours",
-  "1d": "1 day",
-  "5d": "5 days",
-  "1mo": "1 month",
-  "6mo": "6 months",
-  "1y": "1 year"
-};
-
-const VALID_PERIODS = new Set(Object.keys(PERIOD_LABELS));
-const VALID_CUSTOM_UNITS = new Set(["hours", "days", "months"]);
-
-if (!VALID_PERIODS.has(state.chartPeriod) && state.chartPeriod !== "custom") {
-  state.chartPeriod = "1d";
-}
-
-if (!VALID_CUSTOM_UNITS.has(state.customUnit)) {
-  state.customUnit = "days";
-}
-
-if (!VALID_CUSTOM_UNITS.has(state.comparisonUnit)) {
-  state.comparisonUnit = "days";
-}
-
-if (!["performance", "value", "pnl", "pnlPercent", "price", "symbol", "dayChange", "shares"].includes(state.comparisonSort)) {
-  state.comparisonSort = "performance";
-}
-
-if (!["line", "candles"].includes(state.chartMode)) {
-  state.chartMode = "line";
-}
-
-state.customAmount = Math.max(1, Math.min(365, state.customAmount));
-
-function loadGroups() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(GROUPS_KEY));
-    if (Array.isArray(saved) && saved.length) {
-      return saved.map((group) => ({
-        id: String(group.id || `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`),
-        name: String(group.name || "Watchlist").slice(0, 18),
-        symbols: Array.isArray(group.symbols) ? group.symbols.map(cleanSymbol).filter(Boolean) : [],
-        portfolio: normalizePortfolio(group.portfolio),
-        alerts: normalizeAlerts(group.alerts)
-      }));
-    }
-  } catch {
-  }
-
-  return [
-    {
-      id: "main",
-      name: "Main",
-      symbols: loadSymbols(),
-      portfolio: {},
-      alerts: {}
-    }
-  ];
-}
-
-function normalizePortfolio(value) {
-  if (!value || typeof value !== "object") return {};
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .map(([symbol, position]) => [
-        cleanSymbol(symbol),
-        {
-          shares: Math.max(0, Number(position?.shares) || 0),
-          avgCost: Math.max(0, Number(position?.avgCost) || 0),
-          openedAt: Number(position?.openedAt) || null
-        }
-      ])
-      .filter(([symbol]) => symbol)
-  );
-}
-
-function loadRealPositions() {
-  try {
-    return normalizePortfolio(JSON.parse(localStorage.getItem(REAL_POSITIONS_KEY)));
-  } catch {
-    return {};
-  }
-}
-
-function loadRealWatchlist() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(REAL_WATCHLIST_KEY));
-    return Array.isArray(saved) ? [...new Set(saved.map(cleanSymbol).filter(Boolean))] : [];
-  } catch {
-    return [];
-  }
-}
-
-function normalizeRealTransaction(transaction) {
-  const symbol = cleanSymbol(transaction?.symbol);
-  const type = String(transaction?.type || "").toLowerCase();
-  const shares = Math.max(0, Number(transaction?.shares) || 0);
-  const price = Math.max(0, Number(transaction?.price) || 0);
-  const avgCost = Math.max(0, Number(transaction?.avgCost) || 0);
-  const total = Number(transaction?.total) || shares * price || shares * avgCost || 0;
-  const createdAt = Number(transaction?.createdAt) || Date.now();
-  if (!symbol || !["set", "buy", "sell"].includes(type)) return null;
-  return {
-    id: String(transaction?.id || `${createdAt}-${symbol}-${type}-${Math.random().toString(36).slice(2)}`),
-    symbol,
-    type,
-    shares,
-    price,
-    avgCost,
-    total,
-    realizedPnl: Number(transaction?.realizedPnl) || 0,
-    createdAt,
-    source: String(transaction?.source || "")
-  };
-}
-
-function loadRealTransactions() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(REAL_TRANSACTIONS_KEY));
-    return Array.isArray(saved) ? saved.map(normalizeRealTransaction).filter(Boolean).slice(0, 200) : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadPaperTransactions() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(PAPER_TRANSACTIONS_KEY));
-    return Array.isArray(saved) ? saved.map(normalizeRealTransaction).filter(Boolean).slice(0, 200) : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadRemovedRealSymbols() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(REAL_REMOVED_SYMBOLS_KEY));
-    return new Set(Array.isArray(saved) ? saved.map(cleanSymbol).filter(Boolean) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function isRealMode() {
-  return state.portfolioMode === "real";
-}
-
-function isPaperMode() {
-  return !isRealMode();
-}
-
-function isRealOwnedTab() {
-  return isRealMode() && state.activeRealTab === "owned";
-}
-
-function isRealWatchlistTab() {
-  return isRealMode() && state.activeRealTab === "watchlist";
-}
-
-function isPortfolioPage() {
-  return state.mainPage === "portfolio";
-}
-
-function isWatchlistPage() {
-  return state.mainPage === "watchlist";
-}
-
-function mergeLocalRealPortfolio(localPositions = {}, localWatchlist = []) {
-  let changed = false;
-  const cloudPositions = state.realPositions || {};
-
-  Object.entries(normalizePortfolio(localPositions)).forEach(([symbol, position]) => {
-    if (state.removedRealSymbols.has(symbol)) {
-      changed = true;
-      return;
-    }
-    if (!cloudPositions[symbol] && Number(position.shares) > 0) {
-      cloudPositions[symbol] = position;
-      changed = true;
-    } else if (cloudPositions[symbol] && !cloudPositions[symbol].openedAt && position.openedAt) {
-      cloudPositions[symbol].openedAt = position.openedAt;
-      changed = true;
-    }
-  });
-
-  const ownedSymbols = new Set(Object.keys(cloudPositions));
-  const previousWatchlist = (state.realWatchlist || []).join("|");
-  const watchlist = [...new Set([...(state.realWatchlist || []), ...(localWatchlist || [])].map(cleanSymbol).filter(Boolean))]
-    .filter((symbol) => !ownedSymbols.has(symbol) && !state.removedRealSymbols.has(symbol));
-  if (watchlist.join("|") !== previousWatchlist) {
-    changed = true;
-  }
-
-  state.realPositions = cloudPositions;
-  state.realWatchlist = watchlist;
-  return changed;
-}
-
-function normalizeAlerts(value) {
-  if (!value || typeof value !== "object") return {};
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .map(([symbol, alert]) => [
-        cleanSymbol(symbol),
-        {
-          active: Boolean(alert?.active),
-          direction: ALERT_DIRECTIONS.has(alert?.direction) ? alert.direction : "above",
-          target: Math.max(0, Number(alert?.target) || 0)
-        }
-      ])
-      .filter(([symbol]) => symbol)
-  );
-}
-
-function loadSymbols() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(saved) && saved.length ? saved.map(cleanSymbol).filter(Boolean) : DEFAULT_SYMBOLS;
-  } catch {
-    return DEFAULT_SYMBOLS;
-  }
-}
-
-function hasOpenPositions(groups = []) {
-  return groups.some((group) =>
-    Object.values(group?.portfolio || {}).some((position) => Number(position?.shares) > 0)
-  );
-}
-
-function loadAccountCash() {
-  const savedCash = Number(localStorage.getItem(CASH_KEY));
-  if (Number.isFinite(savedCash)) {
-    try {
-      const groups = JSON.parse(localStorage.getItem(GROUPS_KEY));
-      if (savedCash <= 0 && !hasOpenPositions(Array.isArray(groups) ? groups : [])) {
-        return STARTING_CASH;
-      }
-    } catch {
-      if (savedCash <= 0) return STARTING_CASH;
-    }
-    return Math.max(0, savedCash);
-  }
-
-  return STARTING_CASH;
-}
-
-function loadRealizedPnl() {
-  const saved = Number(localStorage.getItem(REALIZED_PNL_KEY));
-  return Number.isFinite(saved) ? saved : 0;
-}
-
-function activeGroup() {
-  let group = state.groups.find((item) => item.id === state.activeGroupId);
-  if (!group) {
-    group = state.groups[0];
-    state.activeGroupId = group.id;
-  }
-  group.portfolio ||= {};
-  group.alerts ||= {};
-  return group;
-}
-
-function currentSymbols() {
-  if (isPortfolioPage()) {
-    if (isRealMode()) {
-      return Object.keys(state.realPositions);
-    }
-    return [
-      ...new Set(
-        state.groups.flatMap((group) =>
-          Object.entries(group.portfolio || {})
-            .filter(([, position]) => Number(position?.shares) > 0)
-            .map(([symbol]) => cleanSymbol(symbol))
-        )
-      )
-    ].filter(Boolean);
-  }
-
-  if (isRealMode()) {
-    return state.realWatchlist;
-  }
-  return activeGroup()?.symbols || [];
-}
-
-function visibleStockSymbols(symbols) {
-  const query = state.stockSearch.trim().toLowerCase();
-  if (!query) return symbols;
-
-  return symbols.filter((symbol) => {
-    const quote = state.quotes.get(symbol);
-    return (
-      symbol.toLowerCase().includes(query) ||
-      (quote?.shortName || "").toLowerCase().includes(query) ||
-      (quote?.longName || "").toLowerCase().includes(query)
-    );
-  });
-}
-
-function clearStockSearch() {
-  state.stockSearch = "";
-  if (elements.stockSearch) elements.stockSearch.value = "";
-}
-
-function ensurePositionSymbolsVisible() {
-  const heldSymbols = [
-    ...new Set(
-      state.groups.flatMap((group) =>
-        Object.entries(group.portfolio || {})
-          .filter(([, position]) => Number(position?.shares) > 0)
-          .map(([symbol]) => cleanSymbol(symbol))
-      )
-    )
-  ].filter(Boolean);
-  const firstGroup = state.groups[0] || activeGroup();
-  const paperGroup = state.groups.find((group) => group.name === "Paper positions");
-  const firstSymbols = new Set(firstGroup.symbols || []);
-  const paperSymbols = new Set((paperGroup?.symbols || []).map(cleanSymbol));
-  const missingSymbols = heldSymbols.filter((symbol) => !firstSymbols.has(symbol) || paperSymbols.has(symbol));
-  if (!missingSymbols.length) return;
-
-  firstGroup.symbols = [...new Set([...firstGroup.symbols, ...missingSymbols])];
-  missingSymbols.forEach((symbol) => {
-    const sourceGroup = state.groups.find((group) => group.portfolio?.[symbol]);
-    if (sourceGroup?.portfolio?.[symbol]) {
-      firstGroup.portfolio ||= {};
-      firstGroup.portfolio[symbol] = sourceGroup.portfolio[symbol];
-    }
-  });
-
-  state.groups = state.groups.filter(
-    (group) => group.name !== "Paper positions" || group.symbols.some((symbol) => !firstGroup.symbols.includes(symbol))
-  );
-}
-
-function saveGroups() {
-  ensurePositionSymbolsVisible();
-  localStorage.setItem(PORTFOLIO_MODE_KEY, state.portfolioMode);
-  localStorage.setItem(REAL_POSITIONS_KEY, JSON.stringify(state.realPositions));
-  localStorage.setItem(REAL_WATCHLIST_KEY, JSON.stringify(state.realWatchlist));
-  localStorage.setItem(REAL_TRANSACTIONS_KEY, JSON.stringify(state.realTransactions));
-  localStorage.setItem(REAL_REMOVED_SYMBOLS_KEY, JSON.stringify([...state.removedRealSymbols]));
-  localStorage.setItem(PAPER_TRANSACTIONS_KEY, JSON.stringify(state.paperTransactions));
-  localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
-  localStorage.setItem(GROUPS_KEY, JSON.stringify(state.groups));
-  localStorage.setItem(ACTIVE_GROUP_KEY, state.activeGroupId);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(activeGroup()?.symbols || []));
-  localStorage.setItem(CASH_KEY, String(state.cash));
-  localStorage.setItem(REALIZED_PNL_KEY, String(state.realizedPnl));
-  queueCloudSave();
-}
-
-function recordRealTransaction(transaction) {
-  const normalized = normalizeRealTransaction({
-    ...transaction,
-    id: `${Date.now()}-${cleanSymbol(transaction.symbol)}-${transaction.type}-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: Date.now()
-  });
-  if (!normalized) return;
-  state.realTransactions = [normalized, ...(state.realTransactions || [])].slice(0, 200);
-}
-
-function recordPaperTransaction(transaction) {
-  const normalized = normalizeRealTransaction({
-    ...transaction,
-    id: `${Date.now()}-${cleanSymbol(transaction.symbol)}-${transaction.type}-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: Date.now()
-  });
-  if (!normalized) return;
-  state.paperTransactions = [normalized, ...(state.paperTransactions || [])].slice(0, 200);
-}
-
-function paperTransactionsFromTrades(trades = []) {
-  return trades
-    .map((trade) =>
-      normalizeRealTransaction({
-        id: `${trade.created_at || Date.now()}-${cleanSymbol(trade.symbol)}-${trade.side}`,
-        symbol: trade.symbol,
-        type: trade.side,
-        shares: trade.shares,
-        price: trade.price,
-        total: Number(trade.shares) * Number(trade.price),
-        realizedPnl: trade.realized_pnl,
-        createdAt: trade.created_at ? Date.parse(trade.created_at) : Date.now(),
-        source: "paper-broker"
-      })
-    )
-    .filter(Boolean)
-    .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
-    .slice(0, 200);
-}
-
-function positionFor(symbol) {
-  if (isRealMode()) {
-    return state.realPositions[symbol] || { shares: 0, avgCost: 0 };
-  }
-  if (isPortfolioPage()) {
-    return paperPositionFor(symbol);
-  }
-  const group = activeGroup();
-  group.portfolio ||= {};
-  group.portfolio[symbol] ||= { shares: 0, avgCost: 0 };
-  return group.portfolio[symbol];
-}
-
-function paperPositionFor(symbol) {
-  const cleaned = cleanSymbol(symbol);
-  const group = state.groups.find((item) => Number(item.portfolio?.[cleaned]?.shares) > 0);
-  return group?.portfolio?.[cleaned] || { shares: 0, avgCost: 0 };
-}
-
-function alertFor(symbol) {
-  const group = activeGroup();
-  group.alerts ||= {};
-  group.alerts[symbol] ||= { active: false, direction: "above", target: 0 };
-  return group.alerts[symbol];
-}
-
-function positionStats(symbol) {
-  const quote = state.quotes.get(symbol);
-  const position = positionFor(symbol);
-  const price = quote?.regularMarketPrice;
-  const shares = Number(position.shares) || 0;
-  const avgCost = Number(position.avgCost) || 0;
-  const value = Number.isFinite(price) ? shares * price : 0;
-  const cost = shares * avgCost;
-  const pnl = value - cost;
-  const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
-
-  return { shares, avgCost, value, cost, pnl, pnlPercent };
-}
-
-function escapeXml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function excelCell(value, type = "String") {
-  const safeType = type === "Number" || type === "DateTime" ? type : "String";
-  const safeValue =
-    safeType === "Number" ? (value !== "" && Number.isFinite(Number(value)) ? Number(value) : "") : escapeXml(value);
-  return `<Cell><Data ss:Type="${safeType}">${safeValue}</Data></Cell>`;
-}
-
-function portfolioExportRows() {
-  return currentSymbols()
-    .map((symbol) => {
-      const quote = state.quotes.get(symbol);
-      const stats = positionStats(symbol);
-      if (stats.shares <= 0) return null;
-      const price = Number(quote?.regularMarketPrice);
-      return {
-        symbol,
-        name: quote?.shortName || quote?.longName || symbol,
-        shares: stats.shares,
-        avgCost: stats.avgCost,
-        price: Number.isFinite(price) ? price : "",
-        cost: stats.cost,
-        value: stats.value,
-        pnl: stats.pnl,
-        pnlPercent: stats.pnlPercent,
-        dayChangePercent: Number.isFinite(Number(quote?.regularMarketChangePercent))
-          ? Number(quote.regularMarketChangePercent)
-          : "",
-        mode: isRealMode() ? "Real Portfolio" : "Paper Portfolio",
-        exportedAt: new Date().toLocaleString()
-      };
-    })
-    .filter(Boolean);
-}
-
-function exportCurrentPortfolio() {
-  const rows = portfolioExportRows();
-  if (!rows.length) {
-    elements.marketStatus.textContent = "No owned positions to export yet.";
-    return;
-  }
-
-  const headers = [
-    "Symbol",
-    "Name",
-    "Shares",
-    "Average Cost",
-    "Current Price",
-    "Cost Basis",
-    "Market Value",
-    "Unrealized P/L",
-    "Unrealized P/L %",
-    "Day Change %",
-    "Mode",
-    "Exported At"
-  ];
-  const body = rows
-    .map(
-      (row) => `<Row>
-        ${excelCell(row.symbol)}
-        ${excelCell(row.name)}
-        ${excelCell(row.shares, "Number")}
-        ${excelCell(row.avgCost, "Number")}
-        ${excelCell(row.price, "Number")}
-        ${excelCell(row.cost, "Number")}
-        ${excelCell(row.value, "Number")}
-        ${excelCell(row.pnl, "Number")}
-        ${excelCell(row.pnlPercent, "Number")}
-        ${excelCell(row.dayChangePercent, "Number")}
-        ${excelCell(row.mode)}
-        ${excelCell(row.exportedAt)}
-      </Row>`
-    )
-    .join("");
-  const xml = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:o="urn:schemas-microsoft-com:office:office"
-  xmlns:x="urn:schemas-microsoft-com:office:excel"
-  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-  <Worksheet ss:Name="Portfolio">
-    <Table>
-      <Row>${headers.map((header) => excelCell(header)).join("")}</Row>
-      ${body}
-    </Table>
-  </Worksheet>
-</Workbook>`;
-  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const date = new Date().toISOString().slice(0, 10);
-  link.href = url;
-  link.download = `poshkan-${isRealMode() ? "real" : "paper"}-portfolio-${date}.xls`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  elements.marketStatus.textContent = `Exported ${rows.length} portfolio position${rows.length === 1 ? "" : "s"} to Excel.`;
-}
-
-function positionOpenedAt(symbol) {
-  const openedAt = Number(positionFor(symbol)?.openedAt);
-  return Number.isFinite(openedAt) && openedAt > 0 ? openedAt : null;
-}
-
-function portfolioTotals(symbols = currentSymbols()) {
-  const holdings = symbols.reduce(
-    (totals, symbol) => {
-      const stats = positionStats(symbol);
-      totals.value += stats.value;
-      totals.cost += stats.cost;
-      totals.pnl += stats.pnl;
-      return totals;
-    },
-    { value: 0, cost: 0, pnl: 0 }
-  );
-  const cash = isRealMode() ? 0 : state.cash;
-  return { ...holdings, cash, equity: holdings.value + cash };
-}
-
-function healthRows() {
-  const rows = isRealMode()
-    ? Object.keys(state.realPositions).map((symbol) => {
-        const quote = state.quotes.get(symbol);
-        const stats = positionStats(symbol);
-        return {
-          symbol,
-          name: quote?.shortName || symbol,
-          price: quote?.regularMarketPrice,
-          dayChange: quote?.regularMarketChangePercent,
-          shares: stats.shares,
-          value: stats.value,
-          pnl: stats.pnl,
-          pnlPercent: stats.pnlPercent
-        };
-      })
-    : state.groups.flatMap((group) =>
-        Object.entries(group.portfolio || {}).map(([rawSymbol, position]) => {
-          const symbol = cleanSymbol(rawSymbol);
-          const quote = state.quotes.get(symbol);
-          const shares = Number(position?.shares) || 0;
-          const avgCost = Number(position?.avgCost) || 0;
-          const price = Number(quote?.regularMarketPrice);
-          const value = Number.isFinite(price) ? shares * price : 0;
-          const cost = shares * avgCost;
-          const pnl = value - cost;
-          return {
-            symbol,
-            name: quote?.shortName || symbol,
-            price,
-            dayChange: quote?.regularMarketChangePercent,
-            shares,
-            value,
-            pnl,
-            pnlPercent: cost > 0 ? (pnl / cost) * 100 : 0
-          };
-        })
-      );
-
-  return rows.filter((row) => row.symbol && row.shares > 0 && row.value > 0);
-}
-
-function portfolioHealth() {
-  const rows = healthRows();
-  const totals = isRealMode() ? portfolioTotals(Object.keys(state.realPositions)) : accountTotals();
-  const holdings = isRealMode() ? totals.value : totals.holdings;
-  const equity = isRealMode() ? holdings : totals.equity;
-  const best = rows.reduce((winner, row) => (!winner || row.pnlPercent > winner.pnlPercent ? row : winner), null);
-  const worst = rows.reduce((loser, row) => (!loser || row.pnlPercent < loser.pnlPercent ? row : loser), null);
-  const largest = rows.reduce((leader, row) => (!leader || row.value > leader.value ? row : leader), null);
-  const concentration = holdings > 0 && largest ? (largest.value / holdings) * 100 : 0;
-  const dayWeightedValue = rows.reduce((sum, row) => {
-    const change = Number(row.dayChange);
-    return Number.isFinite(change) ? sum + row.value * (change / 100) : sum;
-  }, 0);
-  const dayChangePercent = holdings > 0 ? (dayWeightedValue / holdings) * 100 : 0;
-  const cashRatio = !isRealMode() && equity > 0 ? (state.cash / equity) * 100 : null;
-
-  return { rows, best, worst, largest, concentration, dayWeightedValue, dayChangePercent, cashRatio, holdings, equity };
-}
-
-function accountTotals() {
-  const totals = state.groups.reduce(
-    (account, group) => {
-      const groupTotals = (group.symbols || []).reduce(
-        (sum, symbol) => {
-          const quote = state.quotes.get(symbol);
-          const position = group.portfolio?.[symbol] || {};
-          const shares = Number(position.shares) || 0;
-          const avgCost = Number(position.avgCost) || 0;
-          const value = Number.isFinite(quote?.regularMarketPrice) ? shares * quote.regularMarketPrice : 0;
-          return {
-            holdings: sum.holdings + value,
-            cost: sum.cost + shares * avgCost
-          };
-        },
-        { holdings: 0, cost: 0 }
-      );
-
-      return {
-        holdings: account.holdings + groupTotals.holdings,
-        cost: account.cost + groupTotals.cost
-      };
-    },
-    { holdings: 0, cost: 0 }
-  );
-  const unrealizedPnl = totals.holdings - totals.cost;
-  const realizedPnl = state.realizedPnl;
-  return {
-    ...totals,
-    cash: state.cash,
-    realizedPnl,
-    unrealizedPnl,
-    totalPnl: realizedPnl + unrealizedPnl
-  };
+const moneyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
+
+function cleanSymbol(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9.^-]/g, "")
+    .slice(0, 12);
 }
 
 function money(value) {
-  return Number.isFinite(value)
-    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
-    : "--";
-}
-
-function moneyAxis(value) {
-  return Number.isFinite(value)
-    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value)
-    : "--";
-}
-
-function compact(value) {
-  return Number.isFinite(value)
-    ? new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)
-    : "--";
-}
-
-function relativeTime(value) {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "";
-
-  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const units = [
-    ["year", 31536000],
-    ["month", 2592000],
-    ["week", 604800],
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60]
-  ];
-  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  const [unit, size] = units.find(([, size]) => Math.abs(seconds) >= size) || ["minute", 60];
-  return formatter.format(Math.round(seconds / size), unit);
-}
-
-function newsSentiment(article) {
-  const text = `${article?.title || ""} ${article?.summary || ""}`.toLowerCase();
-  const positive = ["beat", "beats", "gain", "gains", "growth", "upgrade", "raises", "rally", "record", "strong"];
-  const negative = ["miss", "falls", "drop", "drops", "down", "cut", "lawsuit", "probe", "warning", "weak"];
-  const score =
-    positive.reduce((total, word) => total + (text.includes(word) ? 1 : 0), 0) -
-    negative.reduce((total, word) => total + (text.includes(word) ? 1 : 0), 0);
-
-  if (score > 0) return { label: "Positive", className: "positive" };
-  if (score < 0) return { label: "Cautious", className: "cautious" };
-  return { label: "Neutral", className: "neutral" };
-}
-
-function pointPrice(point) {
-  return Number.isFinite(point?.close) ? point.close : point?.price;
-}
-
-function pointHigh(point) {
-  return Number.isFinite(point?.high) ? point.high : pointPrice(point);
-}
-
-function pointLow(point) {
-  return Number.isFinite(point?.low) ? point.low : pointPrice(point);
-}
-
-function movingAverage(points, windowSize) {
-  let sum = 0;
-  return points.map((point, index) => {
-    sum += pointPrice(point);
-    if (index >= windowSize) {
-      sum -= pointPrice(points[index - windowSize]);
-    }
-    return index >= windowSize - 1 ? sum / windowSize : null;
-  });
-}
-
-function signed(value, suffix = "") {
-  if (!Number.isFinite(value)) return "--";
-  const sign = value >= 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}${suffix}`;
+  return Number.isFinite(Number(value)) ? moneyFormatter.format(Number(value)) : "--";
 }
 
 function signedMoney(value) {
-  if (!Number.isFinite(value)) return "--";
-  const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${money(Math.abs(value))}`;
+  if (!Number.isFinite(Number(value))) return "--";
+  return `${Number(value) >= 0 ? "+" : "-"}${money(Math.abs(Number(value)))}`;
 }
 
-function quoteStatus(symbol, quote) {
-  if (!quote) {
-    return {
-      label: "Loading live quote",
-      detail: "Waiting for market data",
-      className: "loading"
-    };
-  }
-
-  if (!Number.isFinite(Number(quote.regularMarketPrice))) {
-    return {
-      label: "Quote unavailable",
-      detail: "Price not available",
-      className: "unavailable"
-    };
-  }
-
-  const status = quote.cacheStatus || "fresh";
-  const age = Number.isFinite(Number(quote.dataAgeSeconds)) ? `${Number(quote.dataAgeSeconds)}s old` : "";
-  if (status === "demo") {
-    return { label: "Demo fallback", detail: age || "Live feed unreachable", className: "demo" };
-  }
-  if (status === "stale") {
-    return { label: "Using stale quote", detail: age || "Last saved quote", className: "stale" };
-  }
-  if (status === "cached") {
-    return { label: "Using cached quote", detail: age || "Short cache", className: "cached" };
-  }
-  return { label: "Live quote", detail: age || "Fresh market data", className: "live" };
+function signedPercent(value) {
+  if (!Number.isFinite(Number(value))) return "--";
+  const sign = Number(value) >= 0 ? "+" : "";
+  return `${sign}${Number(value).toFixed(2)}%`;
 }
 
-function alertStatus(symbol) {
-  const quote = state.quotes.get(symbol);
-  const alert = alertFor(symbol);
-  const price = quote?.regularMarketPrice;
-
-  if (!alert.active || !Number.isFinite(alert.target) || alert.target <= 0) {
-    return { label: "No alert", className: "idle", triggered: false };
-  }
-
-  const triggered =
-    Number.isFinite(price) &&
-    (alert.direction === "above" ? price >= alert.target : price <= alert.target);
-
-  return {
-    label: `${alert.direction === "above" ? "Above" : "Below"} ${moneyAxis(alert.target)}`,
-    className: triggered ? "triggered" : "armed",
-    triggered
-  };
-}
-
-function alertKey(groupId, symbol, alert) {
-  return `${groupId}:${symbol}:${alert.direction}:${Number(alert.target).toFixed(4)}`;
-}
-
-function evaluateAlerts(quotes) {
-  const group = activeGroup();
-  group.alerts ||= {};
-  let triggeredCount = 0;
-
-  quotes.forEach((quote) => {
-    const alert = group.alerts[quote.symbol];
-    if (!alert?.active || !Number.isFinite(alert.target) || alert.target <= 0) return;
-
-    const price = quote.regularMarketPrice;
-    const hit = Number.isFinite(price) && (alert.direction === "above" ? price >= alert.target : price <= alert.target);
-    const key = alertKey(group.id, quote.symbol, alert);
-
-    if (!hit) {
-      state.firedAlerts.delete(key);
-      return;
-    }
-
-    triggeredCount += 1;
-    if (state.firedAlerts.has(key)) return;
-
-    state.firedAlerts.add(key);
-    state.alertEvents.unshift({
-      key,
-      symbol: quote.symbol,
-      direction: alert.direction,
-      target: alert.target,
-      price,
-      time: Date.now()
-    });
-  });
-
-  state.alertEvents = state.alertEvents.slice(0, 4);
-  renderAlertTray();
-  return triggeredCount;
-}
-
-function renderAlertTray() {
-  if (!state.alertEvents.length) {
-    elements.alertTray.innerHTML = "";
-    renderMobileNav();
-    return;
-  }
-
-  elements.alertTray.innerHTML = state.alertEvents
-    .map((event) => {
-      if (event.type === "undo-remove") {
-        return `
-          <div class="alert-toast undo-toast">
-            <strong>${escapeHtml(event.symbol)}</strong>
-            <span>${escapeHtml(event.message)}</span>
-            <button type="button" data-undo-remove="${escapeHtml(event.key)}">Undo</button>
-            <button type="button" data-alert-dismiss="${escapeHtml(event.key)}" title="Dismiss">x</button>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="alert-toast">
-          <strong>${escapeHtml(event.symbol)}</strong>
-          <span>${event.direction === "above" ? "Above" : "Below"} ${moneyAxis(event.target)} at ${moneyAxis(
-            event.price
-          )}</span>
-          <time>${new Date(event.time).toLocaleTimeString()}</time>
-          <button type="button" data-alert-dismiss="${escapeHtml(event.key)}" title="Dismiss alert">x</button>
-        </div>
-      `;
-    })
-    .join("");
-  renderMobileNav();
-}
-
-function addUndoRemoveEvent(snapshot) {
-  const label = snapshot.mode === "real" ? "real portfolio" : "paper group";
-  const message = `${snapshot.symbol} removed from ${label}.`;
-  state.alertEvents.unshift({
-    type: "undo-remove",
-    key: `undo:${Date.now()}:${snapshot.mode}:${snapshot.symbol}`,
-    symbol: snapshot.symbol,
-    message,
-    snapshot,
-    time: Date.now()
-  });
-  state.alertEvents = state.alertEvents.slice(0, 4);
-  renderAlertTray();
-}
-
-async function restoreRemovedStock(key) {
-  const event = state.alertEvents.find((item) => item.key === key && item.type === "undo-remove");
-  if (!event?.snapshot) return;
-
-  const snapshot = event.snapshot;
-  if (snapshot.mode === "real") {
-    state.removedRealSymbols.delete(snapshot.symbol);
-    if (snapshot.position) {
-      state.realPositions[snapshot.symbol] = { ...snapshot.position };
-      state.realPortfolioTouched = true;
-    }
-    if (snapshot.watchlist) {
-      state.realWatchlist = state.realWatchlist.filter((item) => item !== snapshot.symbol);
-      state.realWatchlist.splice(Math.min(snapshot.index, state.realWatchlist.length), 0, snapshot.symbol);
-    }
-    if (snapshot.quote) state.quotes.set(snapshot.symbol, snapshot.quote);
-    state.activeRealTab = snapshot.realTab || state.activeRealTab;
-    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
-    state.selected = snapshot.symbol;
-    saveGroups();
-    renderWatchlist();
-    renderSelectedQuote();
-    if (state.cloudReady) await saveCloudData({ force: true });
-  } else {
-    const group = state.groups.find((item) => item.id === snapshot.groupId) || activeGroup();
-    group.symbols = group.symbols.filter((item) => item !== snapshot.symbol);
-    group.symbols.splice(Math.min(snapshot.index, group.symbols.length), 0, snapshot.symbol);
-    group.portfolio ||= {};
-    group.alerts ||= {};
-    if (snapshot.portfolio) group.portfolio[snapshot.symbol] = { ...snapshot.portfolio };
-    if (snapshot.alert) group.alerts[snapshot.symbol] = { ...snapshot.alert };
-    if (snapshot.quote) state.quotes.set(snapshot.symbol, snapshot.quote);
-    state.activeGroupId = group.id;
-    localStorage.setItem(ACTIVE_GROUP_KEY, group.id);
-    state.selected = snapshot.symbol;
-    saveGroups();
-    renderWatchlist();
-    renderSelectedQuote();
-  }
-
-  state.alertEvents = state.alertEvents.filter((item) => item.key !== key);
-  renderAlertTray();
-}
-
-function cardSparkline(symbol, quote, direction) {
-  const width = 128;
-  const height = 42;
-  const change = Number.isFinite(quote?.regularMarketChangePercent) ? quote.regularMarketChangePercent : 0;
-  const seed = [...symbol].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const points = Array.from({ length: 18 }, (_, index) => {
-    const x = (index / 17) * width;
-    const trend = (index / 17 - 0.5) * change * 1.7;
-    const wave = Math.sin(index * 0.9 + seed) * 5 + Math.cos(index * 0.45 + seed / 3) * 2.5;
-    const y = height / 2 - trend - wave;
-    return [x, Math.max(5, Math.min(height - 5, y))];
-  });
-  const path = points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const color = direction === "up" ? "#44d07b" : "#ff6b6b";
-
-  return `
-    <svg class="mini-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true">
-      <polyline points="${path}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
-  `;
-}
-
-function timeLabel(seconds, options = {}) {
-  if (!Number.isFinite(seconds)) return "--";
-  return new Date(seconds * 1000).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    ...options
-  });
-}
-
-function isIntradayChart() {
-  return (
-    ["1h", "4h", "1d"].includes(state.chartPeriod) ||
-    (state.chartPeriod === "custom" && ["hours", "days"].includes(state.customUnit) && state.customAmount <= 5)
-  );
-}
-
-function axisTimeLabel(seconds) {
-  if (isIntradayChart()) {
-    return timeLabel(seconds);
-  }
-
-  if (state.chartPeriod === "5d") {
-    return new Date(seconds * 1000).toLocaleDateString([], {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit"
-    });
-  }
-
-  return new Date(seconds * 1000).toLocaleDateString([], {
-    month: "short",
-    day: "numeric"
-  });
-}
-
-function tooltipTimeLabel(seconds) {
-  if (isIntradayChart()) {
-    return timeLabel(seconds, { second: "2-digit" });
-  }
-
-  return new Date(seconds * 1000).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: state.chartPeriod === "1y" ? "numeric" : undefined,
-    hour: state.chartPeriod === "5d" ? "2-digit" : undefined,
-    minute: state.chartPeriod === "5d" ? "2-digit" : undefined
-  });
-}
-
-function chartLabel() {
-  if (state.chartPeriod === "custom") {
-    return `${state.customAmount} ${state.customUnit}`;
-  }
-
-  return PERIOD_LABELS[state.chartPeriod] || "Selected";
-}
-
-function comparisonLabel() {
-  const amount = Math.max(1, Number(state.comparisonAmount) || 4);
-  return `${amount} ${state.comparisonUnit}`;
-}
-
-function historyQuery(symbol) {
-  const params = new URLSearchParams({ symbol });
-
-  if (state.chartPeriod === "custom") {
-    params.set("period", "custom");
-    params.set("amount", String(state.customAmount));
-    params.set("unit", state.customUnit);
-  } else {
-    params.set("period", state.chartPeriod);
-  }
-
-  return params.toString();
-}
-
-function cleanSymbol(value) {
-  return value.toUpperCase().replace(/[^A-Z0-9.^-]/g, "").slice(0, 12);
+function number(value) {
+  return Number.isFinite(Number(value)) ? numberFormatter.format(Number(value)) : "--";
 }
 
 function escapeHtml(value) {
@@ -1204,3255 +105,1254 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+    .replaceAll("'", "&#039;");
 }
 
-function safeUrl(value) {
-  try {
-    const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) ? url.href : "#";
-  } catch {
-    return "#";
+function setStatus(message, type = "") {
+  elements.status.textContent = message || "";
+  elements.status.className = `app-status ${type}`.trim();
+}
+
+function activePortfolio() {
+  return state.portfolios.find((portfolio) => portfolio.id === state.selectedPortfolioId) || state.portfolios[0] || null;
+}
+
+function portfolioHoldings(portfolioId = state.selectedPortfolioId) {
+  return state.holdings.get(portfolioId) || [];
+}
+
+function portfolioWatchlist(portfolioId = state.selectedPortfolioId) {
+  return state.watchlist.get(portfolioId) || [];
+}
+
+function portfolioTrades(portfolioId = state.selectedPortfolioId) {
+  return state.trades.get(portfolioId) || [];
+}
+
+function quoteFor(symbol) {
+  return state.quotes.get(cleanSymbol(symbol));
+}
+
+function holdingStats(holding) {
+  const quote = quoteFor(holding.symbol);
+  const price = Number(quote?.regularMarketPrice);
+  const quantity = Number(holding.quantity) || 0;
+  const avgCost = Number(holding.avg_cost) || 0;
+  const value = Number.isFinite(price) ? quantity * price : quantity * avgCost;
+  const cost = quantity * avgCost;
+  const totalPnl = value - cost;
+  const totalPnlPercent = cost > 0 ? (totalPnl / cost) * 100 : 0;
+  const dayChange = Number(quote?.regularMarketChange) || 0;
+  const dayPnl = dayChange * quantity;
+  return { price, quantity, avgCost, value, cost, totalPnl, totalPnlPercent, dayPnl, quote };
+}
+
+function portfolioSummary(portfolio = activePortfolio()) {
+  if (!portfolio) return { cash: 0, holdingsValue: 0, totalValue: 0, invested: 0, totalPnl: 0, todayPnl: 0 };
+  const holdings = portfolioHoldings(portfolio.id);
+  const totals = holdings.reduce(
+    (sum, holding) => {
+      const stats = holdingStats(holding);
+      sum.holdingsValue += stats.value;
+      sum.invested += stats.cost;
+      sum.totalPnl += stats.totalPnl;
+      sum.todayPnl += stats.dayPnl;
+      return sum;
+    },
+    { holdingsValue: 0, invested: 0, totalPnl: 0, todayPnl: 0 }
+  );
+  const cash = Number(portfolio.cash) || 0;
+  return { ...totals, cash, totalValue: cash + totals.holdingsValue };
+}
+
+function allSymbols(portfolioId = state.selectedPortfolioId) {
+  return [
+    ...new Set([
+      ...portfolioHoldings(portfolioId).map((holding) => cleanSymbol(holding.symbol)),
+      ...portfolioWatchlist(portfolioId).map((item) => cleanSymbol(item.symbol))
+    ])
+  ].filter(Boolean);
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || `Request failed: ${response.status}`);
+  return data;
+}
+
+async function loadConfig() {
+  state.config = await fetchJson("/api/config");
+  if (!state.config.supabaseUrl || !state.config.supabaseAnonKey) {
+    throw new Error("Supabase environment keys are missing on the server.");
+  }
+  state.supabase = window.supabase.createClient(state.config.supabaseUrl, state.config.supabaseAnonKey);
+}
+
+async function loadQuotes(symbols = allSymbols()) {
+  const clean = [...new Set(symbols.map(cleanSymbol).filter(Boolean))];
+  if (!clean.length) return;
+  const data = await fetchJson(`/api/quotes?symbols=${encodeURIComponent(clean.join(","))}`);
+  (data.quotes || []).forEach((quote) => state.quotes.set(cleanSymbol(quote.symbol), quote));
+  if (data.invalids?.length) {
+    setStatus(`${data.invalids.length} symbol could not be refreshed.`, "warning");
   }
 }
 
-function isUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-async function getJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed: ${response.status}`);
+async function searchAssets(query) {
+  const q = String(query || "").trim();
+  if (q.length < 1) {
+    state.searchResults = [];
+    render();
+    return;
   }
-  return response.json();
-}
-
-async function getJsonAuth(url) {
-  const response = await fetch(url, {
-    headers: {
-      authorization: `Bearer ${state.session?.access_token || ""}`
-    }
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(body.error || `Request failed: ${response.status}`);
-  }
-  return body;
-}
-
-async function postJson(url, payload, { auth = false } = {}) {
-  const headers = { "content-type": "application/json" };
-  if (auth && state.session?.access_token) {
-    headers.authorization = `Bearer ${state.session.access_token}`;
-  }
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload)
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(body.error || `Request failed: ${response.status}`);
-  }
-  return body;
-}
-
-function setAuthMessage(message, type = "") {
-  elements.authMessage.textContent = message || "";
-  elements.authMessage.className = type;
-}
-
-function setAuthMode(mode) {
-  state.authMode = mode === "signup" ? "signup" : "signin";
-  elements.authForm.dataset.mode = state.authMode;
-  elements.signupFields.hidden = state.authMode !== "signup";
-  elements.authSubmit.textContent = state.authMode === "signup" ? "Create account" : "Sign in";
-  elements.authPassword.autocomplete = state.authMode === "signup" ? "new-password" : "current-password";
-  elements.authModeButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.authMode === state.authMode);
-  });
-  setAuthMessage("");
-}
-
-function setAddStockMessage(message, type = "") {
-  elements.addStockMessage.textContent = message || "";
-  elements.addStockMessage.className = `add-stock-message ${type}`.trim();
-}
-
-function setApiKeyMessage(message, type = "") {
-  elements.apiKeyMessage.textContent = message || "";
-  elements.apiKeyMessage.className = `api-key-message ${type}`.trim();
-}
-
-async function ensureUuidGroupIds() {
-  if (!state.supabase || !state.session) return;
-  const userId = state.session.user.id;
-
-  for (let index = 0; index < state.groups.length; index += 1) {
-    const group = state.groups[index];
-    if (isUuid(group.id)) continue;
-
-    const { data, error } = await state.supabase
-      .from("watchlists")
-      .insert({ user_id: userId, name: group.name, sort_order: index })
-      .select("id")
-      .single();
-
-    if (error) throw error;
-    group.id = data.id;
-  }
-}
-
-async function loadCloudRealPositions(userId) {
-  try {
-    const [{ data, error }, { data: watchlistData, error: watchlistError }] = await Promise.all([
-      state.supabase.from("real_positions").select("symbol, shares, avg_cost").eq("user_id", userId),
-      state.supabase.from("real_watchlist").select("symbol").eq("user_id", userId).order("sort_order", { ascending: true })
-    ]);
-    if (error) throw error;
-    if (watchlistError) throw watchlistError;
-    state.realPositionsCloudEnabled = true;
-    state.realPositions = normalizePortfolio(
-      Object.fromEntries(
-        (data || []).map((position) => [
-          cleanSymbol(position.symbol),
-          { shares: Number(position.shares) || 0, avgCost: Number(position.avg_cost) || 0 }
-        ])
-      )
-    );
-    state.realWatchlist = [
-      ...new Set((watchlistData || []).map((item) => cleanSymbol(item.symbol)).filter(Boolean))
-    ];
-    [...Object.keys(state.realPositions), ...state.realWatchlist].forEach((symbol) => {
-      state.removedRealSymbols.delete(symbol);
-    });
-    try {
-      const { data: transactionData, error: transactionError } = await state.supabase
-        .from("real_transactions")
-        .select("id, symbol, type, shares, price, avg_cost, total, source, created_at")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (transactionError) throw transactionError;
-      state.realTransactionsCloudEnabled = true;
-      state.realTransactions = (transactionData || [])
-        .map((transaction) =>
-          normalizeRealTransaction({
-            id: transaction.id,
-            symbol: transaction.symbol,
-            type: transaction.type,
-            shares: transaction.shares,
-            price: transaction.price,
-            avgCost: transaction.avg_cost,
-            total: transaction.total,
-            source: transaction.source,
-            createdAt: transaction.created_at ? new Date(transaction.created_at).getTime() : Date.now()
-          })
-        )
-        .filter(Boolean);
-    } catch {
-      state.realTransactionsCloudEnabled = false;
-    }
-  } catch {
-    state.realPositionsCloudEnabled = false;
-    state.realTransactionsCloudEnabled = false;
-  }
+  const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}`);
+  state.searchResults = data.suggestions || [];
+  await loadQuotes(state.searchResults.map((item) => item.symbol));
+  render();
 }
 
 async function loadCloudData() {
-  if (!state.supabase || !state.session) return;
   const userId = state.session.user.id;
-  const localRealPositions = { ...state.realPositions };
-  const localRealWatchlist = [...(state.realWatchlist || [])];
-  const localRealTransactions = [...(state.realTransactions || [])];
-  const localGroups = state.groups.map((group) => ({
-    ...group,
-    symbols: [...(group.symbols || [])],
-    portfolio: { ...(group.portfolio || {}) },
-    alerts: { ...(group.alerts || {}) }
-  }));
-  state.cloudReady = false;
-
   await state.supabase.from("profiles").upsert({
     id: userId,
-    email: state.session.user.email
+    email: state.session.user.email,
+    display_name: state.session.user.user_metadata?.display_name || state.session.user.user_metadata?.username || null
   });
 
-  const { data: account, error: accountError } = await state.supabase
-    .from("accounts")
-    .select("cash, realized_pnl")
-    .eq("user_id", userId)
+  const { data: profile } = await state.supabase
+    .from("profiles")
+    .select("last_active_portfolio_id, display_name")
+    .eq("id", userId)
     .maybeSingle();
+  const { data: portfolios, error: portfolioError } = await state.supabase
+    .from("portfolios")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("archived", false)
+    .order("created_at", { ascending: true });
+  if (portfolioError) throw portfolioError;
 
-  if (accountError) throw accountError;
-  await loadCloudRealPositions(userId);
-  if (state.realTransactionsCloudEnabled && localRealTransactions.length) {
-    const cloudIds = new Set((state.realTransactions || []).map((transaction) => transaction.id));
-    state.realTransactions = [
-      ...(state.realTransactions || []),
-      ...localRealTransactions.filter((transaction) => !cloudIds.has(transaction.id))
-    ]
-      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
-      .slice(0, 200);
-  }
-  let mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist);
+  state.portfolios = portfolios || [];
+  const ids = state.portfolios.map((portfolio) => portfolio.id);
+  state.holdings = new Map(ids.map((id) => [id, []]));
+  state.watchlist = new Map(ids.map((id) => [id, []]));
+  state.trades = new Map(ids.map((id) => [id, []]));
+  state.aiSettings = new Map(ids.map((id) => [id, null]));
 
-  if (!account) {
-    mergeLocalRealPortfolio(localRealPositions, localRealWatchlist);
-    await ensureUuidGroupIds();
-    await saveCloudData({ force: true });
-  } else {
-    state.cash = Number(account.cash) || 0;
-    state.realizedPnl = Number(account.realized_pnl) || 0;
-
-    const { data: watchlists, error: watchlistsError } = await state.supabase
-      .from("watchlists")
-      .select("id, name, sort_order")
-      .eq("user_id", userId)
-      .order("sort_order", { ascending: true });
-    if (watchlistsError) throw watchlistsError;
-
-    if (!watchlists?.length && localGroups.some((group) => group.symbols?.length)) {
-      await loadCloudRealPositions(userId);
-      mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist) || mergedRealPortfolio;
-      state.groups = localGroups;
-      state.activeGroupId = state.groups[0]?.id || "main";
-      state.selected = currentSymbols()[0] || null;
-      await ensureUuidGroupIds();
-      state.cloudReady = true;
-      await saveCloudData({ force: true });
-      saveGroups();
-      renderWatchlist();
-      renderSelectedQuote();
-      return;
-    }
-
-    const ids = (watchlists || []).map((group) => group.id);
-    const [{ data: stocks, error: stocksError }, { data: positions, error: positionsError }, { data: alerts, error: alertsError }] =
-      await Promise.all([
-        ids.length
-          ? state.supabase.from("watchlist_stocks").select("watchlist_id, symbol, created_at").in("watchlist_id", ids)
-          : { data: [], error: null },
-        state.supabase.from("positions").select("symbol, shares, avg_cost").eq("user_id", userId),
-        state.supabase.from("alerts").select("symbol, active, direction, target").eq("user_id", userId)
-      ]);
-
-    if (stocksError) throw stocksError;
-    if (positionsError) throw positionsError;
-    if (alertsError) throw alertsError;
-
-    if (watchlists?.length && !(stocks || []).length && localGroups.some((group) => group.symbols?.length)) {
-      await loadCloudRealPositions(userId);
-      mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist) || mergedRealPortfolio;
-      state.groups = localGroups;
-      state.activeGroupId = state.groups[0]?.id || "main";
-      state.selected = currentSymbols()[0] || null;
-      await ensureUuidGroupIds();
-      state.cloudReady = true;
-      await saveCloudData({ force: true });
-      saveGroups();
-      renderWatchlist();
-      renderSelectedQuote();
-      return;
-    }
-
-    const portfolio = Object.fromEntries(
-      (positions || []).map((position) => [
-        cleanSymbol(position.symbol),
-        { shares: Number(position.shares) || 0, avgCost: Number(position.avg_cost) || 0 }
-      ])
-    );
-    const alertMap = Object.fromEntries(
-      (alerts || []).map((alert) => [
-        cleanSymbol(alert.symbol),
-        {
-          active: Boolean(alert.active),
-          direction: ALERT_DIRECTIONS.has(alert.direction) ? alert.direction : "above",
-          target: Number(alert.target) || 0
-        }
-      ])
-    );
-
-    state.groups =
-      watchlists?.length
-        ? watchlists.map((group) => ({
-            id: group.id,
-            name: group.name,
-            symbols: (stocks || [])
-              .filter((stock) => stock.watchlist_id === group.id)
-              .map((stock) => cleanSymbol(stock.symbol))
-              .filter(Boolean),
-            portfolio: { ...portfolio },
-            alerts: { ...alertMap }
-          }))
-        : [{ id: "main", name: "Main", symbols: DEFAULT_SYMBOLS, portfolio: {}, alerts: {} }];
-    ensurePositionSymbolsVisible();
-    await loadCloudRealPositions(userId);
-    mergedRealPortfolio = mergeLocalRealPortfolio(localRealPositions, localRealWatchlist) || mergedRealPortfolio;
-
-    state.activeGroupId = state.groups[0]?.id || "main";
-    state.selected = currentSymbols()[0] || null;
-  }
-
-  state.cloudReady = true;
-  if (mergedRealPortfolio) {
-    await saveCloudData({ force: true });
-  }
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-}
-
-function queueCloudSave() {
-  if (!state.supabase || !state.session || !state.cloudReady) return;
-  if (state.cloudSaving) {
-    state.cloudSaveQueued = true;
-    return;
-  }
-
-  state.cloudSaving = true;
-  saveCloudData()
-    .catch((error) => {
-      elements.marketStatus.textContent = `Cloud save failed: ${error.message}`;
-    })
-    .finally(() => {
-      state.cloudSaving = false;
-      if (state.cloudSaveQueued) {
-        state.cloudSaveQueued = false;
-        queueCloudSave();
-      }
-    });
-}
-
-async function saveCloudData({ force = false } = {}) {
-  if (!state.supabase || !state.session || (!state.cloudReady && !force)) return;
-  const userId = state.session.user.id;
-  await ensureUuidGroupIds();
-
-  const saveResult = async (request) => {
-    const { error } = await request;
-    if (error) throw error;
-  };
-
-  await saveResult(
-    state.supabase
-    .from("accounts")
-    .upsert(
-      {
-        user_id: userId,
-        cash: state.cash,
-        realized_pnl: state.realizedPnl
-      },
-      { onConflict: "user_id" }
-    )
-  );
-
-  await saveResult(
-    state.supabase.from("watchlists").upsert(
-      state.groups.map((group, index) => ({
-        id: group.id,
-        user_id: userId,
-        name: group.name,
-        sort_order: index
-      }))
-    )
-  );
-
-  const ids = state.groups.map((group) => group.id).filter(isUuid);
   if (ids.length) {
-    await saveResult(state.supabase.from("watchlist_stocks").delete().in("watchlist_id", ids));
+    const [holdingsResult, watchlistResult, tradesResult, aiResult] = await Promise.all([
+      state.supabase.from("portfolio_holdings").select("*").in("portfolio_id", ids).order("symbol"),
+      state.supabase.from("portfolio_watchlist").select("*").in("portfolio_id", ids).order("sort_order"),
+      state.supabase.from("portfolio_trades").select("*").in("portfolio_id", ids).order("created_at", { ascending: false }),
+      state.supabase.from("portfolio_ai_settings").select("*").in("portfolio_id", ids)
+    ]);
+    if (holdingsResult.error) throw holdingsResult.error;
+    if (watchlistResult.error) throw watchlistResult.error;
+    if (tradesResult.error) throw tradesResult.error;
+    if (aiResult.error) throw aiResult.error;
+
+    (holdingsResult.data || []).forEach((holding) => state.holdings.get(holding.portfolio_id)?.push(holding));
+    (watchlistResult.data || []).forEach((item) => state.watchlist.get(item.portfolio_id)?.push(item));
+    (tradesResult.data || []).forEach((trade) => state.trades.get(trade.portfolio_id)?.push(trade));
+    (aiResult.data || []).forEach((setting) => state.aiSettings.set(setting.portfolio_id, setting));
   }
 
-  const stocks = state.groups.flatMap((group) =>
-    group.symbols.map((symbol) => ({
-      watchlist_id: group.id,
-      symbol
-    }))
-  );
-  if (stocks.length) {
-    await saveResult(state.supabase.from("watchlist_stocks").insert(stocks));
-  }
+  const preferred = localStorage.getItem("poshkan-active-portfolio") || profile?.last_active_portfolio_id;
+  state.selectedPortfolioId = state.portfolios.some((portfolio) => portfolio.id === preferred)
+    ? preferred
+    : state.portfolios[0]?.id || null;
+  elements.accountName.textContent = profile?.display_name || state.session.user.email || "Account";
+  await loadQuotes(state.portfolios.flatMap((portfolio) => allSymbols(portfolio.id)));
+}
 
-  const symbols = [...new Set(state.groups.flatMap((group) => group.symbols))];
-  await saveResult(state.supabase.from("positions").delete().eq("user_id", userId));
-  await saveResult(state.supabase.from("alerts").delete().eq("user_id", userId));
+async function saveLastActivePortfolio() {
+  if (!state.session || !state.selectedPortfolioId) return;
+  localStorage.setItem("poshkan-active-portfolio", state.selectedPortfolioId);
+  await state.supabase
+    .from("profiles")
+    .update({ last_active_portfolio_id: state.selectedPortfolioId, updated_at: new Date().toISOString() })
+    .eq("id", state.session.user.id);
+}
 
-  const activePositions = symbols
-    .map((symbol) => {
-      const group = state.groups.find((item) => item.portfolio?.[symbol]);
-      const position = group?.portfolio?.[symbol];
-      return position && Number(position.shares) > 0
-        ? { user_id: userId, symbol, shares: position.shares, avg_cost: position.avgCost }
-        : null;
+function parseStartingHoldings(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => {
+      const [symbol, quantity, avgCost] = line.split(",").map((part) => part.trim());
+      const clean = cleanSymbol(symbol);
+      const qty = Number(quantity);
+      const cost = Number(avgCost);
+      if (!clean || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(cost) || cost < 0) return null;
+      return { symbol: clean, quantity: qty, avgCost: cost };
     })
     .filter(Boolean);
-  if (activePositions.length) {
-    await saveResult(state.supabase.from("positions").insert(activePositions));
-  }
-
-  const realPositionCount = Object.keys(state.realPositions || {}).length;
-  if (state.realPositionsCloudEnabled && (state.realPortfolioTouched || realPositionCount > 0)) {
-    await saveResult(state.supabase.from("real_positions").delete().eq("user_id", userId));
-    await saveResult(state.supabase.from("real_watchlist").delete().eq("user_id", userId));
-    const realPositions = Object.entries(state.realPositions || {})
-      .map(([symbol, position]) => {
-        const shares = Number(position?.shares) || 0;
-        const avgCost = Number(position?.avgCost) || 0;
-        return shares > 0 ? { user_id: userId, symbol: cleanSymbol(symbol), shares, avg_cost: avgCost } : null;
-      })
-      .filter(Boolean);
-    if (realPositions.length) {
-      await saveResult(state.supabase.from("real_positions").insert(realPositions));
-    }
-    const ownedSymbols = new Set(Object.keys(state.realPositions || {}));
-    const realWatchlist = (state.realWatchlist || [])
-      .map(cleanSymbol)
-      .filter((symbol) => symbol && !ownedSymbols.has(symbol))
-      .map((symbol, index) => ({ user_id: userId, symbol, sort_order: index }));
-    if (realWatchlist.length) {
-      await saveResult(state.supabase.from("real_watchlist").insert(realWatchlist));
-    }
-    if (state.realTransactionsCloudEnabled) {
-      await saveResult(state.supabase.from("real_transactions").delete().eq("user_id", userId));
-      const realTransactions = (state.realTransactions || [])
-        .map((transaction) => ({
-          id: transaction.id,
-          user_id: userId,
-          symbol: cleanSymbol(transaction.symbol),
-          type: transaction.type,
-          shares: Number(transaction.shares) || 0,
-          price: Number(transaction.price) || 0,
-          avg_cost: Number(transaction.avgCost) || 0,
-          total: Number(transaction.total) || 0,
-          source: transaction.source || null,
-          created_at: new Date(transaction.createdAt || Date.now()).toISOString()
-        }))
-        .filter((transaction) => transaction.symbol && ["set", "buy", "sell"].includes(transaction.type));
-      if (realTransactions.length) {
-        await saveResult(state.supabase.from("real_transactions").insert(realTransactions));
-      }
-    }
-    state.realPortfolioTouched = false;
-  }
-
-  const activeAlerts = symbols
-    .map((symbol) => {
-      const group = state.groups.find((item) => item.alerts?.[symbol]);
-      const alert = group?.alerts?.[symbol];
-      return alert && (alert.active || Number(alert.target) > 0)
-        ? { user_id: userId, symbol, active: alert.active, direction: alert.direction, target: alert.target }
-        : null;
-    })
-    .filter(Boolean);
-  if (activeAlerts.length) {
-    await saveResult(state.supabase.from("alerts").insert(activeAlerts));
-  }
 }
 
-function renderAuthState() {
-  const isSignedIn = Boolean(state.session?.user);
-  elements.authPanel.hidden = isSignedIn;
-  elements.dashboardShell.hidden = !isSignedIn;
-  elements.accountIdentity.textContent = isSignedIn ? userDisplayName(state.session.user) : "";
-  renderMobileNav();
-}
-
-function userDisplayName(user) {
-  const metadata = user?.user_metadata || {};
-  return metadata.username || metadata.name || user?.email || "";
-}
-
-function renderApiKeys(keys = []) {
-  if (!keys.length) {
-    elements.apiKeyList.innerHTML = `<div class="empty-state">No Claude paper keys yet.</div>`;
+async function createPortfolio(event) {
+  event.preventDefault();
+  const userId = state.session.user.id;
+  const name = elements.portfolioName.value.trim();
+  const accountType = elements.portfolioType.value;
+  const cash = Math.max(0, Number(elements.portfolioCash.value) || STARTING_CASH);
+  if (!name) return;
+  if (accountType === "crypto") {
+    setStatus("Crypto portfolios are planned for the next phase.", "warning");
     return;
   }
 
-  elements.apiKeyList.innerHTML = keys
-    .map((key) => {
-      const lastUsed = key.last_used_at ? new Date(key.last_used_at).toLocaleString() : "Never used";
-      return `
-        <div class="api-key-row">
-          <div>
-            <strong>${escapeHtml(key.name || "Claude paper key")}</strong>
-            <small>${escapeHtml(key.key_prefix)} | Active | Last used: ${escapeHtml(lastUsed)}</small>
-          </div>
-          <button type="button" data-api-key-revoke="${escapeHtml(key.id)}">Revoke</button>
-        </div>
-      `;
-    })
-    .join("");
+  const { data, error } = await state.supabase
+    .from("portfolios")
+    .insert({ user_id: userId, name, account_type: accountType, starting_cash: cash, cash })
+    .select()
+    .single();
+  if (error) throw error;
+
+  const portfolio = data;
+  const starting = parseStartingHoldings(elements.portfolioStartingHoldings.value);
+  if (starting.length) {
+    const symbols = starting.map((item) => item.symbol);
+    await loadQuotes(symbols);
+    const holdings = starting.map((item) => ({
+      portfolio_id: portfolio.id,
+      user_id: userId,
+      symbol: item.symbol,
+      asset_type: "us_stock",
+      name: quoteFor(item.symbol)?.shortName || item.symbol,
+      quantity: item.quantity,
+      avg_cost: item.avgCost
+    }));
+    const trades = starting.map((item) => ({
+      portfolio_id: portfolio.id,
+      user_id: userId,
+      symbol: item.symbol,
+      asset_type: "us_stock",
+      trade_type: "starting_position",
+      quantity: item.quantity,
+      price: item.avgCost,
+      total: item.quantity * item.avgCost,
+      source: "manual"
+    }));
+    const holdingResult = await state.supabase.from("portfolio_holdings").insert(holdings);
+    if (holdingResult.error) throw holdingResult.error;
+    const tradeResult = await state.supabase.from("portfolio_trades").insert(trades);
+    if (tradeResult.error) throw tradeResult.error;
+  }
+
+  await state.supabase.from("portfolio_ai_settings").insert({ portfolio_id: portfolio.id, user_id: userId });
+  elements.dialog.close();
+  elements.portfolioForm.reset();
+  elements.portfolioCash.value = STARTING_CASH;
+  state.selectedPortfolioId = portfolio.id;
+  state.page = "portfolio";
+  state.portfolioTab = "overview";
+  await loadCloudData();
+  await saveLastActivePortfolio();
+  render();
+}
+
+async function archivePortfolio(id) {
+  const portfolio = state.portfolios.find((item) => item.id === id);
+  if (!portfolio) return;
+  if (!window.confirm(`Archive "${portfolio.name}"?`)) return;
+  const { error } = await state.supabase.from("portfolios").update({ archived: true }).eq("id", id);
+  if (error) throw error;
+  await loadCloudData();
+  state.page = state.portfolios.length ? "portfolios" : "portfolios";
+  render();
+}
+
+async function addToWatchlist(asset = state.selectedSearchAsset) {
+  const portfolio = activePortfolio();
+  if (!portfolio || !asset) return;
+  const symbol = cleanSymbol(asset.symbol);
+  if (portfolio.account_type !== "us_stock") return;
+  if (portfolioHoldings().some((holding) => holding.symbol === symbol)) {
+    setStatus(`${symbol} is already in holdings.`, "warning");
+    return;
+  }
+  if (portfolioWatchlist().some((item) => item.symbol === symbol)) {
+    setStatus(`${symbol} is already in watchlist.`, "warning");
+    return;
+  }
+  const { error } = await state.supabase.from("portfolio_watchlist").insert({
+    portfolio_id: portfolio.id,
+    user_id: state.session.user.id,
+    symbol,
+    asset_type: "us_stock",
+    name: asset.name || quoteFor(symbol)?.shortName || symbol,
+    sort_order: portfolioWatchlist().length
+  });
+  if (error) throw error;
+  state.searchResults = [];
+  state.selectedSearchAsset = null;
+  await loadCloudData();
+  render();
+  setStatus(`${symbol} added to watchlist.`, "success");
+}
+
+async function setStartingHolding(symbol, quantity, avgCost) {
+  const portfolio = activePortfolio();
+  const clean = cleanSymbol(symbol);
+  const qty = Math.max(0, Number(quantity) || 0);
+  const cost = Math.max(0, Number(avgCost) || 0);
+  if (!portfolio || !clean || qty <= 0) return;
+  await loadQuotes([clean]);
+  const userId = state.session.user.id;
+  const { error } = await state.supabase.from("portfolio_holdings").upsert(
+    {
+      portfolio_id: portfolio.id,
+      user_id: userId,
+      symbol: clean,
+      asset_type: "us_stock",
+      name: quoteFor(clean)?.shortName || clean,
+      quantity: qty,
+      avg_cost: cost,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: "portfolio_id,symbol" }
+  );
+  if (error) throw error;
+  await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean);
+  await state.supabase.from("portfolio_trades").insert({
+    portfolio_id: portfolio.id,
+    user_id: userId,
+    symbol: clean,
+    asset_type: "us_stock",
+    trade_type: "starting_position",
+    quantity: qty,
+    price: cost,
+    total: qty * cost,
+    source: "manual"
+  });
+  await loadCloudData();
+  render();
+  setStatus(`${clean} starting holding saved.`, "success");
+}
+
+async function executeTrade(symbol, side, quantity) {
+  const portfolio = activePortfolio();
+  const clean = cleanSymbol(symbol);
+  const qty = Math.max(0, Number(quantity) || 0);
+  if (!portfolio || !clean || !qty) {
+    setStatus("Enter a symbol and quantity.", "warning");
+    return;
+  }
+  await loadQuotes([clean]);
+  const quote = quoteFor(clean);
+  const price = Number(quote?.regularMarketPrice);
+  if (!Number.isFinite(price) || price <= 0) {
+    setStatus(`No usable live price for ${clean}.`, "warning");
+    return;
+  }
+  const userId = state.session.user.id;
+  const current = portfolioHoldings().find((holding) => holding.symbol === clean) || null;
+  let cash = Number(portfolio.cash) || 0;
+  let realizedPnl = 0;
+
+  if (side === "buy") {
+    const total = qty * price;
+    if (total > cash) {
+      setStatus(`Not enough cash to buy ${qty} ${clean}.`, "warning");
+      return;
+    }
+    const oldQty = Number(current?.quantity) || 0;
+    const oldCost = oldQty * (Number(current?.avg_cost) || 0);
+    const newQty = oldQty + qty;
+    const avgCost = newQty ? (oldCost + total) / newQty : 0;
+    const { error } = await state.supabase.from("portfolio_holdings").upsert(
+      {
+        portfolio_id: portfolio.id,
+        user_id: userId,
+        symbol: clean,
+        asset_type: "us_stock",
+        name: quote.shortName || clean,
+        quantity: Number(newQty.toFixed(6)),
+        avg_cost: Number(avgCost.toFixed(4)),
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "portfolio_id,symbol" }
+    );
+    if (error) throw error;
+    await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean);
+    cash -= total;
+  } else {
+    const oldQty = Number(current?.quantity) || 0;
+    if (!current || qty > oldQty) {
+      setStatus(`You only have ${number(oldQty)} ${clean}.`, "warning");
+      return;
+    }
+    realizedPnl = qty * (price - Number(current.avg_cost));
+    const newQty = oldQty - qty;
+    if (newQty <= 0) {
+      await state.supabase.from("portfolio_holdings").delete().eq("portfolio_id", portfolio.id).eq("symbol", clean);
+    } else {
+      await state.supabase
+        .from("portfolio_holdings")
+        .update({ quantity: Number(newQty.toFixed(6)), updated_at: new Date().toISOString() })
+        .eq("portfolio_id", portfolio.id)
+        .eq("symbol", clean);
+    }
+    cash += qty * price;
+  }
+
+  await state.supabase.from("portfolios").update({ cash: Number(cash.toFixed(2)), updated_at: new Date().toISOString() }).eq("id", portfolio.id);
+  await state.supabase.from("portfolio_trades").insert({
+    portfolio_id: portfolio.id,
+    user_id: userId,
+    symbol: clean,
+    asset_type: "us_stock",
+    trade_type: side,
+    quantity: qty,
+    price,
+    total: qty * price,
+    realized_pnl: Number(realizedPnl.toFixed(2)),
+    source: "manual"
+  });
+  await loadCloudData();
+  state.selectedSymbol = clean;
+  state.page = "stock";
+  state.stockTab = "trade";
+  render();
+  setStatus(`${side === "buy" ? "Bought" : "Sold"} ${qty} ${clean} at ${money(price)}.`, "success");
+}
+
+async function deleteWatchlistSymbol(symbol) {
+  const portfolio = activePortfolio();
+  if (!portfolio) return;
+  await state.supabase.from("portfolio_watchlist").delete().eq("portfolio_id", portfolio.id).eq("symbol", cleanSymbol(symbol));
+  await loadCloudData();
+  render();
+}
+
+async function loadStockDetail(symbol) {
+  const clean = cleanSymbol(symbol);
+  state.selectedSymbol = clean;
+  state.page = "stock";
+  state.stockTab = "chart";
+  await loadQuotes([clean]);
+  await loadChart(clean);
+  render();
+}
+
+async function loadChart(symbol = state.selectedSymbol) {
+  if (!symbol) return;
+  const data = await fetchJson(`/api/history?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(state.chartPeriod)}`);
+  state.chartPoints = data.history || [];
+}
+
+async function loadNews(symbol = state.selectedSymbol) {
+  if (!symbol || state.news?.symbol === symbol) return;
+  state.news = await fetchJson(`/api/news?symbol=${encodeURIComponent(symbol)}`);
+}
+
+async function loadPerformance() {
+  const portfolio = activePortfolio();
+  if (!portfolio) return;
+  const symbols = allSymbols(portfolio.id);
+  if (!symbols.length) return;
+  const heldSince = portfolioHoldings(portfolio.id)
+    .map((holding) => `${holding.symbol}:${Math.floor(new Date(holding.opened_at || Date.now()).getTime() / 1000)}`)
+    .join(",");
+  const data = await fetchJson(
+    `/api/performance?symbols=${encodeURIComponent(symbols.join(","))}&amount=4&unit=days&heldSince=${encodeURIComponent(heldSince)}`
+  );
+  state.performance = new Map((data.performance || []).map((item) => [cleanSymbol(item.symbol), item]));
 }
 
 async function loadApiKeys() {
-  if (!state.session?.access_token) return;
+  if (!state.session) return;
   try {
-    const data = await getJsonAuth("/api/keys");
-    renderApiKeys(data.keys || []);
+    const data = await fetchJson("/api/keys", { headers: { authorization: `Bearer ${state.session.access_token}` } });
+    state.apiKeys = data.keys || [];
   } catch (error) {
-    setApiKeyMessage(error.message, "error");
+    setStatus(error.message, "warning");
   }
 }
 
-async function syncPaperAccount({ quiet = true } = {}) {
-  if (!state.session?.access_token || state.paperSyncing) return;
-  state.paperSyncing = true;
-
-  try {
-    const data = await getJsonAuth("/api/paper/account");
-    const firstGroup = state.groups[0] || activeGroup();
-    let changed = false;
-
-    state.cash = Number(data.account?.cash) || state.cash;
-    state.realizedPnl = Number(data.account?.realizedPnl) || 0;
-    const nextPaperTransactions = paperTransactionsFromTrades(data.trades || []);
-    if (nextPaperTransactions.length) {
-      const previousIds = (state.paperTransactions || []).map((transaction) => transaction.id).join("|");
-      const nextIds = nextPaperTransactions.map((transaction) => transaction.id).join("|");
-      if (previousIds !== nextIds) {
-        state.paperTransactions = nextPaperTransactions;
-        changed = true;
-      }
-    }
-    firstGroup.portfolio ||= {};
-    firstGroup.symbols ||= [];
-    const firstBuyBySymbol = new Map();
-    (data.trades || []).forEach((trade) => {
-      if (String(trade.side).toLowerCase() !== "buy") return;
-      const symbol = cleanSymbol(trade.symbol);
-      const time = Date.parse(trade.created_at);
-      if (!symbol || !Number.isFinite(time)) return;
-      const current = firstBuyBySymbol.get(symbol);
-      if (!current || time < current) firstBuyBySymbol.set(symbol, time);
-    });
-
-    (data.positions || []).forEach((position) => {
-      const symbol = cleanSymbol(position.symbol);
-      const shares = Number(position.shares) || 0;
-      if (!symbol || shares <= 0) return;
-
-      const existing = firstGroup.portfolio[symbol] || {};
-      if (!firstGroup.symbols.includes(symbol)) {
-        firstGroup.symbols = [symbol, ...firstGroup.symbols];
-        changed = true;
-      }
-      if (Number(existing.shares) !== shares || Number(existing.avgCost) !== Number(position.avgCost)) {
-        firstGroup.portfolio[symbol] = {
-          shares,
-          avgCost: Number(position.avgCost) || 0,
-          openedAt: existing.openedAt || firstBuyBySymbol.get(symbol) || Number(position.openedAt) || null
-        };
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      saveGroups();
-      renderWatchlist();
-      renderSelectedQuote();
-      await refreshQuotes({ quiet: true });
-      if (!quiet) elements.marketStatus.textContent = "Paper account synced";
-    } else {
-      renderAccountSummary();
-      renderPortfolioSummary();
-      renderTradeHistoryPanels();
-    }
-  } catch (error) {
-    if (!quiet) elements.marketStatus.textContent = `Paper sync failed: ${error.message}`;
-  } finally {
-    state.paperSyncing = false;
-  }
-}
-
-function clearSignedOutState(message = "Signed out.") {
-  state.session = null;
-  state.cloudReady = false;
-  state.cloudSaving = false;
-  state.cloudSaveQueued = false;
-  elements.apiKeyList.innerHTML = "";
-  elements.apiKeySecret.hidden = true;
-  setAuthMessage(message, "success");
-  renderAuthState();
-}
-
-async function initializeAuth() {
-  const config = await getJson("/api/config");
-
-  if (!config.supabaseUrl || !config.supabaseAnonKey) {
-    setAuthMessage("Add SUPABASE_URL and SUPABASE_ANON_KEY to the server environment, then restart.", "error");
-    elements.dashboardShell.hidden = true;
-    elements.authPanel.hidden = false;
-    renderMobileNav();
-    return;
-  }
-
-  if (!window.supabase?.createClient) {
-    setAuthMessage("Supabase client library did not load. Check your network connection.", "error");
-    return;
-  }
-
-  state.supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-  state.paperApiKeysEnabled = Boolean(config.paperApiKeysEnabled);
-  elements.apiKeyCreate.disabled = !state.paperApiKeysEnabled;
-  if (!state.paperApiKeysEnabled) {
-    setApiKeyMessage("Add SUPABASE_SERVICE_ROLE_KEY on the server to enable Claude paper API keys.", "error");
-  }
-  const { data, error } = await state.supabase.auth.getSession();
-  if (error) {
-    setAuthMessage(error.message, "error");
-  }
-  state.session = data?.session || null;
-  renderAuthState();
-  if (state.session) {
-    await loadCloudData();
-    await loadApiKeys();
-    await syncPaperAccount({ quiet: true });
-    await refreshQuotes();
-    if (state.selected) refreshNews(state.selected);
-  }
-
-  state.supabase.auth.onAuthStateChange(async (_event, session) => {
-    state.session = session;
-    state.cloudReady = false;
-    renderAuthState();
-    if (session) {
-      await loadCloudData();
-      await loadApiKeys();
-      await syncPaperAccount({ quiet: true });
-      refreshQuotes().then(() => {
-        if (state.selected) refreshNews(state.selected);
-      });
-    }
+async function createApiKey() {
+  const data = await fetchJson("/api/keys/create", {
+    method: "POST",
+    headers: { authorization: `Bearer ${state.session.access_token}`, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Claude portfolio key" })
   });
+  await loadApiKeys();
+  render();
+  const box = document.querySelector("#new-api-secret");
+  if (box) {
+    box.hidden = false;
+    box.textContent = `Endpoint: ${data.credentials?.endpoint || location.origin}/api/paper/trade\nKey: ${
+      data.credentials?.key || ""
+    }\nSecret: ${data.credentials?.secret || ""}`;
+  }
 }
 
-function applyResolvedSymbols(quotes) {
-  const group = activeGroup();
-  let changed = false;
-
-  quotes.forEach((quote) => {
-    const requested = cleanSymbol(quote.requestedSymbol);
-    const resolved = cleanSymbol(quote.symbol);
-    if (!requested || !resolved || requested === resolved) return;
-
-    if (isRealMode()) {
-      if (state.realPositions[requested]) {
-        if (!state.realPositions[resolved]) state.realPositions[resolved] = state.realPositions[requested];
-        delete state.realPositions[requested];
-      } else if (state.realWatchlist.includes(requested)) {
-        state.realWatchlist = state.realWatchlist.map((symbol) => (symbol === requested ? resolved : symbol));
-        state.realWatchlist = [...new Set(state.realWatchlist)];
-      } else {
-        return;
-      }
-      state.quotes.delete(requested);
-      if (state.selected === requested) state.selected = resolved;
-      changed = true;
-      return;
-    }
-
-    if (!group.symbols.includes(requested)) return;
-
-    group.symbols = group.symbols.map((symbol) => (symbol === requested ? resolved : symbol));
-    if (group.portfolio?.[requested] && !group.portfolio[resolved]) {
-      group.portfolio[resolved] = group.portfolio[requested];
-    }
-    if (group.alerts?.[requested] && !group.alerts[resolved]) {
-      group.alerts[resolved] = group.alerts[requested];
-    }
-    delete group.portfolio?.[requested];
-    delete group.alerts?.[requested];
-    state.quotes.delete(requested);
-    if (state.selected === requested) {
-      state.selected = resolved;
-    }
-    changed = true;
+async function revokeApiKey(id) {
+  await fetchJson("/api/keys/revoke", {
+    method: "POST",
+    headers: { authorization: `Bearer ${state.session.access_token}`, "content-type": "application/json" },
+    body: JSON.stringify({ id })
   });
-
-  if (changed) {
-    if (isPaperMode()) group.symbols = [...new Set(group.symbols)];
-    saveGroups();
-  }
+  await loadApiKeys();
+  render();
 }
 
-function invalidSymbolMessage(invalids = []) {
-  const invalid = invalids[0];
-  if (!invalid) return "";
-  const suggestions = (invalid.suggestions || [])
-    .slice(0, 4)
-    .map((item) => {
-      const name = item.name ? ` ${item.name}` : "";
-      const exchange = item.exchange ? `, ${item.exchange}` : "";
-      return `${item.symbol}${name}${exchange}`;
-    })
-    .join(" | ");
-  return suggestions
-    ? `${invalid.symbol} is not an available stock symbol. Try: ${suggestions}`
-    : `${invalid.symbol} is not an available stock symbol. Check the ticker and exchange suffix.`;
-}
-
-function removeInvalidSymbols(invalids = []) {
-  const invalidSymbols = new Set(invalids.map((invalid) => cleanSymbol(invalid.symbol)).filter(Boolean));
-  if (!invalidSymbols.size) return false;
-
-  if (isRealMode()) {
-    const beforeCount = Object.keys(state.realPositions).length + state.realWatchlist.length;
-    invalidSymbols.forEach((symbol) => {
-      delete state.realPositions[symbol];
-      state.realWatchlist = state.realWatchlist.filter((item) => item !== symbol);
-      state.quotes.delete(symbol);
-    });
-    if (invalidSymbols.has(state.selected)) {
-      state.selected = currentSymbols()[0] || null;
-    }
-    const changed = Object.keys(state.realPositions).length + state.realWatchlist.length !== beforeCount;
-    if (changed) saveGroups();
-    return changed;
-  }
-
-  const group = activeGroup();
-  const beforeCount = group.symbols.length;
-  group.symbols = group.symbols.filter((symbol) => !invalidSymbols.has(symbol));
-  invalidSymbols.forEach((symbol) => {
-    delete group.portfolio?.[symbol];
-    delete group.alerts?.[symbol];
-    state.quotes.delete(symbol);
-  });
-
-  if (invalidSymbols.has(state.selected)) {
-    state.selected = group.symbols[0] || null;
-  }
-
-  const changed = group.symbols.length !== beforeCount;
-  if (changed) saveGroups();
-  return changed;
-}
-
-async function lookupStockBeforeAdd(symbol) {
-  const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbol)}`);
-  if (data.invalids?.length || !data.quotes?.length) {
-    setAddStockMessage(invalidSymbolMessage(data.invalids) || `${symbol} is not an available stock symbol.`, "error");
-    return null;
-  }
-
-  const quote = data.quotes[0];
-  if (!quote?.symbol || !Number.isFinite(quote.regularMarketPrice)) {
-    setAddStockMessage(`${symbol} is not an available stock symbol.`, "error");
-    return null;
-  }
-
-  return quote;
-}
-
-function quoteReliabilityText(data) {
-  const reliability = data?.reliability || {};
-  const parts = [];
-  if (reliability.live) parts.push(`${reliability.live} live`);
-  if (reliability.cached) parts.push(`${reliability.cached} cached`);
-  if (reliability.stale) parts.push(`${reliability.stale} stale`);
-  if (reliability.demo) parts.push(`${reliability.demo} demo`);
-  return parts.length ? parts.join(" / ") : "";
-}
-
-async function refreshQuotes({ quiet = false } = {}) {
-  const symbols = currentSymbols();
-  if (!symbols.length) {
-    renderWatchlist();
-    return;
-  }
-
-  if (!quiet) {
-    elements.marketStatus.textContent = "Refreshing quotes...";
-  }
-
-  try {
-    const data = await getJson(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
-    const removedInvalids = quiet ? false : removeInvalidSymbols(data.invalids || []);
-    const invalidStatusMessage =
-      !quiet && removedInvalids
-        ? `${data.invalids.length} invalid symbol${data.invalids.length === 1 ? "" : "s"} removed.`
-        : "";
-    if (!quiet && data.invalids?.length) {
-      setAddStockMessage(invalidSymbolMessage(data.invalids), "error");
-    }
-    applyResolvedSymbols(data.quotes);
-    data.quotes.forEach((quote) => state.quotes.set(quote.symbol, quote));
-    const triggeredCount = evaluateAlerts(data.quotes);
-    if (!currentSymbols().includes(state.selected)) {
-      state.selected = data.quotes[0]?.symbol || null;
-    }
-    if (removedInvalids && !state.selected) {
-      drawEmptyChart("Add or select a stock");
-      elements.newsSource.textContent = "Click a stock to load headlines";
-      elements.newsList.innerHTML = "";
-    }
-    if (data.source === "yahoo-chart") {
-      if (!data.invalids?.length) {
-        elements.marketStatus.textContent = triggeredCount
-          ? `${triggeredCount} price alert${triggeredCount === 1 ? "" : "s"} triggered`
-          : `Market prices from Yahoo Finance chart feed${quoteReliabilityText(data) ? ` (${quoteReliabilityText(data)})` : ""}`;
-      }
-    } else if (data.source === "cached") {
-      elements.marketStatus.textContent = `Quotes served from short cache (${quoteReliabilityText(data)})`;
-    } else if (data.source === "mixed") {
-      elements.marketStatus.textContent = `${data.warning || "Some prices refreshed; some are cached or fallback values"}${
-        quoteReliabilityText(data) ? ` (${quoteReliabilityText(data)})` : ""
-      }`;
-    } else {
-      elements.marketStatus.textContent = "Demo prices shown because live market data is unreachable";
-    }
-    if (invalidStatusMessage) {
-      elements.marketStatus.textContent = invalidStatusMessage;
-    }
-    elements.lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}${
-      quoteReliabilityText(data) ? ` | ${quoteReliabilityText(data)}` : ""
-    }`;
-    renderWatchlist();
-    renderSelectedQuote();
-    if (!state.performance.size) {
-      refreshPerformance({ quiet: true });
-    }
-    if (state.selected) {
-      await refreshHistory(state.selected);
-    }
-  } catch (error) {
-    elements.marketStatus.textContent = error.message;
-  }
-}
-
-async function refreshPerformance({ quiet = false } = {}) {
-  const symbols = currentSymbols();
-  if (!symbols.length || state.comparisonLoading) {
-    renderComparisonTable();
-    return;
-  }
-
-  state.comparisonLoading = true;
-  if (!quiet) elements.comparisonPeriodLabel.textContent = `Loading ${comparisonLabel()}...`;
-
-  const params = new URLSearchParams({
-    symbols: symbols.join(","),
-    amount: String(state.comparisonAmount),
-    unit: state.comparisonUnit
-  });
-  const heldSince = symbols
-    .map((symbol) => {
-      const openedAt = positionOpenedAt(symbol);
-      return openedAt ? `${symbol}:${Math.floor(openedAt / 1000)}` : null;
-    })
-    .filter(Boolean);
-  if (heldSince.length) params.set("heldSince", heldSince.join(","));
-
-  try {
-    const data = await getJson(`/api/performance?${params.toString()}`);
-    (data.performance || []).forEach((item) => {
-      const symbol = cleanSymbol(item.symbol);
-      if (symbol) state.performance.set(symbol, item);
-    });
-    if (!quiet && data.failed?.length) {
-      elements.marketStatus.textContent = `${data.failed.length} performance item${data.failed.length === 1 ? "" : "s"} unavailable`;
-    }
-  } catch (error) {
-    if (!quiet) elements.marketStatus.textContent = `Performance unavailable: ${error.message}`;
-  } finally {
-    state.comparisonLoading = false;
-    renderComparisonTable();
-  }
-}
-
-async function refreshHistory(symbol) {
-  drawLoadingChart();
-  try {
-    const data = await getJson(`/api/history?${historyQuery(symbol)}`);
-    elements.chartPeriodLabel.textContent = `${data.periodLabel || chartLabel()} price history`;
-    drawChart(data.history);
-  } catch {
-    drawEmptyChart("Chart unavailable");
-  }
-}
-
-function renderPeriodButtons() {
-  elements.periodButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.period === state.chartPeriod);
-  });
-  elements.customPeriodAmount.value = state.customAmount;
-  elements.customPeriodUnit.value = state.customUnit;
-  elements.chartPeriodLabel.textContent = `${chartLabel()} price history`;
-}
-
-function renderChartControls() {
-  elements.chartModeButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.chartMode === state.chartMode);
-  });
-  elements.showMA.checked = state.showMA;
-  elements.showVolume.checked = state.showVolume;
-}
-
-function renderSectionVisibility() {
-  elements.workspace.classList.toggle("details-collapsed", !state.showDetailsPanel);
-  elements.workspace.classList.toggle("mobile-detail-open", state.mobileDetailOpen);
-  elements.details.hidden = !state.showDetailsPanel;
-  elements.toggleDetails.innerHTML = state.showDetailsPanel ? "&rsaquo;" : "&lsaquo;";
-  elements.toggleDetails.setAttribute(
-    "aria-label",
-    state.showDetailsPanel ? "Hide chart and news panel" : "Show chart and news panel"
-  );
-  elements.toggleDetails.setAttribute("aria-expanded", String(state.showDetailsPanel));
-}
-
-function renderComparisonPageVisibility() {
-  const subpageOpen = state.comparisonPageOpen || state.historyPageOpen || state.settingsPageOpen;
-  elements.workspace.hidden = state.comparisonPageOpen || state.historyPageOpen || state.settingsPageOpen;
-  elements.dashboardShell.classList.toggle("page-portfolio", isPortfolioPage());
-  elements.dashboardShell.classList.toggle("page-watchlist", isWatchlistPage());
-  elements.dashboardShell.classList.toggle("subpage-open", subpageOpen);
-  elements.comparisonPage.hidden = !state.comparisonPageOpen;
-  elements.historyPage.hidden = !state.historyPageOpen;
-  elements.settingsPage.hidden = !state.settingsPageOpen;
-  if (state.comparisonPageOpen) {
-    renderComparisonTable();
-  }
-  if (state.historyPageOpen) {
-    renderTradeHistoryPanels();
-  }
-  if (state.settingsPageOpen) {
-    renderSettingsPage();
-  }
-  renderMobileNav();
-}
-
-function renderMobileNav() {
-  const isSignedIn = Boolean(state.session?.user);
-  if (elements.mobileNav) {
-    elements.mobileNav.hidden = !isSignedIn;
-  }
-  if (!isSignedIn) {
-    return;
-  }
-
-  const applyState = (button, target) => {
-    const active =
-      (target === "cards" && isPortfolioPage() && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
-      (target === "watchlist" && isWatchlistPage() && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
-      (target === "table" && state.comparisonPageOpen) ||
-      (target === "history" && state.historyPageOpen) ||
-      (target === "settings" && state.settingsPageOpen);
-    button.classList.toggle("active", active);
-    button.classList.toggle("has-alerts", target === "alerts" && state.alertEvents.length > 0);
+async function updateAiSetting(portfolioId, patch) {
+  const existing = state.aiSettings.get(portfolioId);
+  const payload = {
+    portfolio_id: portfolioId,
+    user_id: state.session.user.id,
+    enabled: existing?.enabled || false,
+    allow_buy: existing?.allow_buy ?? true,
+    allow_sell: existing?.allow_sell ?? true,
+    max_trade_percent: Number(existing?.max_trade_percent) || 10,
+    max_daily_trades: Number(existing?.max_daily_trades) || 5,
+    ...patch,
+    updated_at: new Date().toISOString()
   };
+  const { error } = await state.supabase.from("portfolio_ai_settings").upsert(payload);
+  if (error) throw error;
+  await loadCloudData();
+  render();
+}
 
-  elements.appNavButtons.forEach((button) => {
-    applyState(button, button.dataset.appNav);
+function navigate(page) {
+  state.page = page;
+  if (page === "portfolio" && !activePortfolio()) state.page = "portfolios";
+  render();
+}
+
+function selectPortfolio(id) {
+  state.selectedPortfolioId = id;
+  state.page = "portfolio";
+  state.portfolioTab = "overview";
+  saveLastActivePortfolio();
+  render();
+}
+
+function render() {
+  const signedIn = Boolean(state.session);
+  elements.authPanel.hidden = signedIn;
+  elements.appShell.hidden = !signedIn;
+  if (!signedIn) return;
+
+  Object.entries(elements.views).forEach(([name, view]) => {
+    view.hidden = name !== state.page;
+  });
+  elements.navButtons.forEach((button) => {
+    const target = button.dataset.nav;
+    button.classList.toggle("active", target === state.page || (target === "portfolios" && state.page === "portfolio"));
   });
 
-  elements.mobileNavButtons.forEach((button) => {
-    applyState(button, button.dataset.mobileNav);
-  });
-
-  if (elements.mobileAlertCount) {
-    elements.mobileAlertCount.hidden = !state.alertEvents.length;
-    elements.mobileAlertCount.textContent = String(state.alertEvents.length);
-  }
+  renderPortfolios();
+  renderPortfolio();
+  renderStock();
+  renderCompare();
+  renderHistory();
+  renderAi();
+  renderSettings();
 }
 
-function navigateMain(target, { scroll = false } = {}) {
-  if (target === "cards") {
-    state.mainPage = "portfolio";
-    state.comparisonPageOpen = false;
-    state.historyPageOpen = false;
-    state.settingsPageOpen = false;
-    state.mobileDetailOpen = false;
-    state.activeRealTab = "owned";
-    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
-    clearStockSearch();
-    state.selected = null;
-    state.showDetailsPanel = false;
-    localStorage.setItem("stock-dashboard-show-details-panel", "false");
-  } else if (target === "watchlist") {
-    state.mainPage = "watchlist";
-    state.comparisonPageOpen = false;
-    state.historyPageOpen = false;
-    state.settingsPageOpen = false;
-    state.mobileDetailOpen = false;
-    state.activeRealTab = "watchlist";
-    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
-    clearStockSearch();
-    state.selected = null;
-    state.showDetailsPanel = false;
-    localStorage.setItem("stock-dashboard-show-details-panel", "false");
-  } else if (target === "table") {
-    state.comparisonPageOpen = true;
-    state.historyPageOpen = false;
-    state.settingsPageOpen = false;
-  } else if (target === "history") {
-    state.historyPageOpen = true;
-    state.comparisonPageOpen = false;
-    state.settingsPageOpen = false;
-  } else if (target === "settings") {
-    state.settingsPageOpen = true;
-    state.comparisonPageOpen = false;
-    state.historyPageOpen = false;
-  } else if (target === "alerts") {
-    if (!state.alertEvents.length) {
-      elements.marketStatus.textContent = "No active alerts right now";
-      document.querySelector(".status-row")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-    elements.alertTray.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
-
-  renderSectionVisibility();
-  renderWatchlist();
-  renderSelectedQuote();
-  renderComparisonPageVisibility();
-  if (target === "table") {
-    refreshPerformance({ quiet: true });
-  }
-  if (scroll) {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-}
-
-function setDetailsPanelVisibility(visible) {
-  state.showDetailsPanel = visible;
-  localStorage.setItem("stock-dashboard-show-details-panel", String(visible));
-  renderSectionVisibility();
-  if (visible) {
-    renderChart();
-  }
-}
-
-function clearSelectedCard() {
-  if (!state.selected) return;
-
-  state.selected = null;
-  renderWatchlist();
-  renderSelectedQuote();
-}
-
-async function executeBrokerTrade(symbol, action, quantity) {
-  const qty = Math.max(0, Number(quantity) || 0);
-  if (!qty) {
-    elements.marketStatus.textContent = "Enter a share amount after the quote loads";
-    return false;
-  }
-
-  const data = await postJson(
-    "/api/paper/trade",
-    {
-      symbol,
-      side: action,
-      shares: qty
-    },
-    { auth: true }
-  );
-
-  state.cash = data.account.cash;
-  state.realizedPnl = data.account.realizedPnl;
-  state.quotes.set(data.quote.symbol, data.quote);
-
-  const group = activeGroup();
-  if (!group.symbols.includes(data.quote.symbol)) {
-    group.symbols = [data.quote.symbol, ...group.symbols].slice(0, 20);
-  }
-  group.portfolio ||= {};
-  const existing = group.portfolio[data.quote.symbol] || {};
-  group.portfolio[data.quote.symbol] = {
-    shares: data.position.shares,
-    avgCost: data.position.avgCost,
-    openedAt: existing.openedAt || Date.now()
-  };
-  if (state.selected === symbol) {
-    state.selected = data.quote.symbol;
-  }
-  recordPaperTransaction({
-    type: action,
-    symbol: data.quote.symbol,
-    shares: qty,
-    price: data.trade.price,
-    total: qty * data.trade.price,
-    realizedPnl: data.trade.realizedPnl,
-    source: "paper-broker"
-  });
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-  elements.marketStatus.textContent =
-    action === "buy"
-      ? `Bought ${qty} ${data.quote.symbol} at ${moneyAxis(data.trade.price)}`
-      : `Sold ${qty} ${data.quote.symbol} at ${moneyAxis(data.trade.price)} (${signedMoney(data.trade.realizedPnl)} realized)`;
-  return true;
-}
-
-function executeLocalTrade(symbol, action, quantity) {
-  const quote = state.quotes.get(symbol);
-  const price = quote?.regularMarketPrice;
-  const qty = Math.max(0, Number(quantity) || 0);
-  const position = positionFor(symbol);
-
-  if (!qty || !Number.isFinite(price)) {
-    elements.marketStatus.textContent = "Enter a share amount after the quote loads";
-    return;
-  }
-
-  let tradeRealizedPnl = 0;
-  if (action === "buy") {
-    const cost = qty * price;
-    if (cost > state.cash) {
-      elements.marketStatus.textContent = `Not enough paper cash for ${qty} ${symbol}`;
-      return;
-    }
-
-    const existingCost = position.shares * position.avgCost;
-    if (!position.shares) position.openedAt = Date.now();
-    position.shares += qty;
-    position.avgCost = (existingCost + cost) / position.shares;
-    state.cash -= cost;
-    elements.marketStatus.textContent = `Bought ${qty} ${symbol} at ${moneyAxis(price)}`;
-  } else {
-    if (qty > position.shares) {
-      elements.marketStatus.textContent = `You only have ${position.shares.toLocaleString()} ${symbol} shares`;
-      return;
-    }
-
-    const realized = qty * (price - position.avgCost);
-    tradeRealizedPnl = realized;
-    position.shares -= qty;
-    state.realizedPnl += realized;
-    state.cash += qty * price;
-    if (position.shares === 0) {
-      position.avgCost = 0;
-      position.openedAt = null;
-    }
-    elements.marketStatus.textContent = `Sold ${qty} ${symbol} at ${moneyAxis(price)} (${signedMoney(realized)} realized)`;
-  }
-
-  state.cash = Math.max(0, Number(state.cash.toFixed(2)));
-  state.realizedPnl = Number(state.realizedPnl.toFixed(2));
-  position.shares = Math.max(0, Number(position.shares.toFixed(6)));
-  position.avgCost = Math.max(0, Number(position.avgCost.toFixed(4)));
-  recordPaperTransaction({
-    type: action,
-    symbol,
-    shares: qty,
-    price,
-    total: qty * price,
-    realizedPnl: tradeRealizedPnl,
-    source: "paper-local"
-  });
-  saveGroups();
-  if (state.supabase && state.session) {
-    state.supabase
-      .from("trades")
-      .insert({
-        user_id: state.session.user.id,
-        symbol,
-        side: action,
-        shares: qty,
-        price,
-        realized_pnl: tradeRealizedPnl
-      })
-      .then(({ error }) => {
-        if (error) elements.marketStatus.textContent = `Trade saved locally; cloud trade log failed: ${error.message}`;
-      });
-  }
-  renderWatchlist();
-  renderSelectedQuote();
-}
-
-async function executeTrade(symbol, action, quantity) {
-  if (state.session?.access_token) {
-    try {
-      await executeBrokerTrade(symbol, action, quantity);
-      return;
-    } catch (error) {
-      elements.marketStatus.textContent = `Paper broker failed: ${error.message}`;
-      return;
-    }
-  }
-
-  executeLocalTrade(symbol, action, quantity);
-}
-
-function saveRenamedGroup(form) {
-  const group = state.groups.find((item) => item.id === form.dataset.groupId);
-  const name = form.querySelector("input").value.trim().slice(0, 18);
-
-  if (group && name) {
-    group.name = name;
-    saveGroups();
-  }
-
-  state.renamingGroupId = null;
-  renderWatchlist();
-}
-
-function showGroupInput() {
-  state.creatingGroup = true;
-  state.renamingGroupId = null;
-  renderGroups();
-  elements.groupTabs.querySelector("#group-name")?.focus();
-}
-
-function renderGroups() {
-  if (isRealMode()) {
-    elements.groupTabs.innerHTML = `
-      <button type="button" class="group-tab ${state.activeRealTab === "owned" ? "active" : ""}" data-real-tab="owned">
-        <span>Own stock</span>
-        <small>${Object.keys(state.realPositions).length}</small>
-      </button>
-      <button type="button" class="group-tab ${state.activeRealTab === "watchlist" ? "active" : ""}" data-real-tab="watchlist">
-        <span>Watch list</span>
-        <small>${state.realWatchlist.length}</small>
-      </button>
-    `;
-    return;
-  }
-
-  const groupButtons = state.groups
-    .map((group) => {
-      const count = group.symbols.length;
-      if (state.renamingGroupId === group.id) {
-        return `
-          <form class="rename-group-tab" data-group-id="${escapeHtml(group.id)}" autocomplete="off">
-            <label class="sr-only" for="rename-${escapeHtml(group.id)}">Rename group</label>
-            <input id="rename-${escapeHtml(group.id)}" name="groupName" value="${escapeHtml(group.name)}" maxlength="18" />
-          </form>
-        `;
-      }
-
-      const isActive = group.id === state.activeGroupId;
-      return `
-        <span class="group-tab ${isActive ? "active" : ""}">
-          <button type="button" class="group-select" data-group-id="${escapeHtml(group.id)}" title="Double-click to rename">
-            <span>${escapeHtml(group.name)}</span>
-            <small>${count}</small>
-          </button>
-          ${
-            isActive
-              ? `<button type="button" class="remove-group-tab" data-action="remove-active-group" title="Remove current group">x</button>`
-              : ""
-          }
-        </span>
-      `;
-    })
-    .join("");
-
-  const addGroupControl = state.creatingGroup
-    ? `
-      <form class="add-group-tab" autocomplete="off">
-        <label class="sr-only" for="group-name">Group name</label>
-        <input id="group-name" name="groupName" placeholder="Name" maxlength="18" />
-        <button type="submit" title="Create group">+</button>
-      </form>
-    `
-    : `<button type="button" class="add-group-tab-button" data-action="show-group-input" title="Add group">+</button>`;
-
-  elements.groupTabs.innerHTML = groupButtons + addGroupControl;
-}
-
-function renderPortfolioSummary() {
-  renderTradeHistoryPanels();
-}
-
-function renderPortfolioHealth() {
-  if (!elements.portfolioHealth) return;
-  const health = portfolioHealth();
-  const dayClass = health.dayWeightedValue >= 0 ? "up" : "down";
-  const concentrationClass = health.concentration >= 35 ? "down" : health.concentration >= 20 ? "warn" : "up";
-  const cashLabel =
-    health.cashRatio === null
-      ? `${health.rows.length} owned`
-      : `${Number(health.cashRatio).toFixed(1)}% cash`;
-
-  if (!health.rows.length) {
-    elements.portfolioHealth.innerHTML = `
-      <div class="health-card wide">
-        <span>Portfolio health</span>
-        <strong>Add owned shares to unlock health signals.</strong>
-      </div>
-    `;
-    return;
-  }
-
-  elements.portfolioHealth.innerHTML = `
-    <div class="health-card">
-      <span>Biggest winner</span>
-      <strong class="${health.best?.pnl >= 0 ? "up" : "down"}">${escapeHtml(health.best?.symbol || "--")}</strong>
-      <small>${signedMoney(health.best?.pnl)} (${signed(health.best?.pnlPercent, "%")})</small>
-    </div>
-    <div class="health-card">
-      <span>Biggest loser</span>
-      <strong class="${health.worst?.pnl >= 0 ? "up" : "down"}">${escapeHtml(health.worst?.symbol || "--")}</strong>
-      <small>${signedMoney(health.worst?.pnl)} (${signed(health.worst?.pnlPercent, "%")})</small>
-    </div>
-    <div class="health-card">
-      <span>Today estimate</span>
-      <strong class="${dayClass}">${signedMoney(health.dayWeightedValue)}</strong>
-      <small>${signed(health.dayChangePercent, "%")} weighted move</small>
-    </div>
-    <div class="health-card">
-      <span>Largest position</span>
-      <strong class="${concentrationClass}">${escapeHtml(health.largest?.symbol || "--")}</strong>
-      <small>${signed(health.concentration, "%").replace("+", "")} of holdings</small>
-    </div>
-    <div class="health-card">
-      <span>${isRealMode() ? "Real exposure" : "Cash balance"}</span>
-      <strong>${escapeHtml(cashLabel)}</strong>
-      <small>${money(health.holdings)} invested</small>
-    </div>
-  `;
-}
-
-function tradeHistoryMarkup(transactions, modeLabel, options = {}) {
-  const canClearHistory = options.canClear !== false;
+function portfolioCard(portfolio) {
+  const summary = portfolioSummary(portfolio);
   return `
-    <div class="history-head">
-      <span>Recent ${modeLabel} trades</span>
-      <button type="button" data-action="${escapeHtml(options.clearAction || "clear-trade-history")}" ${
-        transactions.length && canClearHistory ? "" : "disabled"
-      }>Clear</button>
-    </div>
-    ${
-      transactions.length
-        ? `<div class="history-list">
-            ${transactions
-              .map((transaction) => {
-                const typeLabel =
-                  transaction.type === "set" ? "Set position" : transaction.type === "buy" ? "Buy" : "Sell";
-                const priceLabel = transaction.type === "set" ? money(transaction.avgCost) : money(transaction.price);
-                const totalLabel = money(transaction.total);
-                const realizedLabel =
-                  modeLabel === "paper" && transaction.type === "sell"
-                    ? ` | Realized ${signedMoney(transaction.realizedPnl)}`
-                    : "";
-                return `
-                  <div class="history-row ${escapeHtml(transaction.type)}">
-                    <div>
-                      <strong>${escapeHtml(transaction.symbol)}</strong>
-                      <span>${escapeHtml(typeLabel)} | ${new Date(transaction.createdAt).toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <strong>${Number(transaction.shares).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong>
-                      <span>${priceLabel} | ${totalLabel}${realizedLabel}</span>
-                    </div>
-                  </div>
-                `;
-              })
-              .join("")}
-          </div>`
-        : `<div class="empty-state mini">No ${modeLabel} trades recorded yet.</div>`
-    }
+    <article class="portfolio-card" data-portfolio-id="${portfolio.id}">
+      <div>
+        <span class="pill">${portfolio.account_type === "crypto" ? "Crypto" : "US Stocks"}</span>
+        <h3>${escapeHtml(portfolio.name)}</h3>
+        <p>${portfolioHoldings(portfolio.id).length} holdings • ${portfolioWatchlist(portfolio.id).length} watchlist</p>
+      </div>
+      <div class="portfolio-card-values">
+        <strong>${money(summary.totalValue)}</strong>
+        <span class="${summary.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(summary.totalPnl)}</span>
+      </div>
+      <div class="row-actions">
+        <button type="button" data-action="open-portfolio" data-id="${portfolio.id}" title="Open this portfolio">Open</button>
+        <button type="button" data-action="archive-portfolio" data-id="${portfolio.id}" title="Archive this portfolio">Archive</button>
+      </div>
+    </article>
   `;
 }
 
-function renderTradeHistoryPanels() {
-  if (!elements.paperTradeHistory || !elements.realTradeHistory) return;
-
-  renderHistoryPageContext();
-  const paperTransactions = (state.paperTransactions || []).slice(0, 8);
-  const realTransactions = (state.realTransactions || []).slice(0, 8);
-  elements.paperTradeHistory.hidden = isRealMode();
-  elements.realTradeHistory.hidden = !isRealMode();
-  elements.paperTradeHistory.innerHTML = tradeHistoryMarkup(paperTransactions, "paper", {
-    clearAction: "clear-paper-history",
-    canClear: true
-  });
-  elements.realTradeHistory.innerHTML = tradeHistoryMarkup(realTransactions, "real", {
-    clearAction: "clear-real-history"
-  });
-}
-
-function renderHistoryPageContext() {
-  if (isRealMode()) {
-    elements.historyPageKicker.textContent = "Real portfolio history";
-    elements.historyPageTitle.textContent = "Real Portfolio Buys and Sales";
-    elements.historyPageDescription.textContent = "Review real tracker buys, sells, and manual holding updates.";
-    return;
-  }
-
-  elements.historyPageKicker.textContent = "Paper trade history";
-  elements.historyPageTitle.textContent = "Paper Buys and Sales";
-  elements.historyPageDescription.textContent = "Review practice trades made with virtual money.";
-}
-
-async function clearTradeHistory(action) {
-  if (action === "clear-real-history") {
-    state.realTransactions = [];
-    saveGroups();
-    if (state.cloudReady) await saveCloudData({ force: true });
-    renderPortfolioSummary();
-    renderTradeHistoryPanels();
-    elements.marketStatus.textContent = "Real transaction history cleared";
-    return;
-  }
-
-  if (state.session?.access_token) {
-    await postJson("/api/paper/trades/clear", {}, { auth: true });
-  }
-  state.paperTransactions = [];
-  saveGroups();
-  renderPortfolioSummary();
-  renderTradeHistoryPanels();
-  elements.marketStatus.textContent = "Paper transaction history cleared";
-}
-
-function renderAccountSummary() {
-  renderPortfolioMode();
-  renderSettingsPage();
-  if (isRealMode()) {
-    const totals = portfolioTotals(Object.keys(state.realPositions));
-    const pnlClass = totals.pnl >= 0 ? "up" : "down";
-    const pnlPercent = totals.cost > 0 ? (totals.pnl / totals.cost) * 100 : 0;
-    elements.accountSummary.innerHTML = `
-      <div class="summary-card primary">
-        <span>Real portfolio value</span>
-        <strong>${money(totals.value)}</strong>
-      </div>
-      <div class="summary-card">
-        <span>Cost basis</span>
-        <strong>${money(totals.cost)}</strong>
-      </div>
-      <div class="summary-card emphasis">
-        <span>Unrealized P/L</span>
-        <strong class="${pnlClass}">${signedMoney(totals.pnl)} (${signed(pnlPercent, "%")})</strong>
-      </div>
-      <div class="summary-card">
-        <span>Positions</span>
-        <strong>${currentSymbols().length}</strong>
-      </div>
+function renderPortfolios() {
+  const view = elements.views.portfolios;
+  if (!state.portfolios.length) {
+    view.innerHTML = `
+      <section class="empty-state">
+        <button class="plus-orb" type="button" data-action="new-portfolio" title="Create your first paper portfolio">+</button>
+        <p class="eyebrow">Welcome</p>
+        <h2>Create your first paper portfolio</h2>
+        <p>Start with virtual cash, add starting holdings, and practice US stock trading safely.</p>
+      </section>
     `;
     return;
   }
-
-  const totals = accountTotals();
-  const realizedClass = totals.realizedPnl >= 0 ? "up" : "down";
-  const unrealizedClass = totals.unrealizedPnl >= 0 ? "up" : "down";
-  const totalClass = totals.totalPnl >= 0 ? "up" : "down";
-
-  elements.accountSummary.innerHTML = `
-    <div class="summary-card primary">
-      <span>Cash available</span>
-      <strong>${money(state.cash)}</strong>
-    </div>
-    <div class="summary-card">
-      <span>Money in stocks</span>
-      <strong>${money(totals.holdings)}</strong>
-    </div>
-    <div class="summary-card">
-      <span>Realized P/L</span>
-      <strong class="${realizedClass}">${signedMoney(totals.realizedPnl)}</strong>
-    </div>
-    <div class="summary-card">
-      <span>Unrealized P/L</span>
-      <strong class="${unrealizedClass}">${signedMoney(totals.unrealizedPnl)}</strong>
-    </div>
-    <div class="summary-card emphasis">
-      <span>Total P/L</span>
-      <strong class="${totalClass}">${signedMoney(totals.totalPnl)}</strong>
-    </div>
-  `;
-}
-
-function renderSettingsPage() {
-  if (!elements.settingsOverview) return;
-
-  const user = state.session?.user;
-  const displayName = user ? userDisplayName(user) : "Signed out";
-  const email = user?.email || "--";
-  const cloudStatus = state.cloudSaving ? "Saving changes" : state.cloudReady ? "Cloud sync ready" : "Sync starting";
-  const apiStatus = state.paperApiKeysEnabled ? "Claude paper API enabled" : "Server key not configured";
-  const modeLabel = isRealMode() ? "Real Portfolio Tracker" : "Paper Trading Practice";
-
-  elements.settingsOverview.innerHTML = `
-    <article class="settings-card">
-      <span>Signed in account</span>
-      <strong>${escapeHtml(displayName)}</strong>
-      <small>${escapeHtml(email)}</small>
-    </article>
-    <article class="settings-card">
-      <span>Current workspace</span>
-      <strong>${escapeHtml(modeLabel)}</strong>
-      <small>${isRealMode() ? "Real holdings and watchlist are separate from paper trades." : "Virtual money trades and Claude paper trades stay here."}</small>
-    </article>
-    <article class="settings-card">
-      <span>Data sync</span>
-      <strong>${escapeHtml(cloudStatus)}</strong>
-      <small>Supabase saves watchlists, positions, alerts, and history when available.</small>
-    </article>
-    <article class="settings-card">
-      <span>Claude API</span>
-      <strong>${escapeHtml(apiStatus)}</strong>
-      <small>Keys only allow paper portfolio actions.</small>
-    </article>
-    <article class="settings-card danger">
-      <span>Paper account</span>
-      <strong>Reset virtual portfolio</strong>
-      <small>Clears paper holdings and resets cash to ${money(STARTING_CASH)}.</small>
-      <button type="button" id="reset-paper-account">Reset paper account</button>
-    </article>
-  `;
-}
-
-function renderPortfolioMode() {
-  const realMode = isRealMode();
-  const portfolioPage = isPortfolioPage();
-  const watchlistPage = isWatchlistPage();
-  const realOwned = realMode && portfolioPage;
-  const realWatchlist = realMode && watchlistPage;
-  elements.dashboardShell.classList.toggle("mode-paper", !realMode);
-  elements.dashboardShell.classList.toggle("mode-real", realMode);
-  elements.dashboardShell.classList.toggle("page-portfolio", portfolioPage);
-  elements.dashboardShell.classList.toggle("page-watchlist", watchlistPage);
-  elements.portfolioModeButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.portfolioMode === state.portfolioMode);
-  });
-  elements.modeContext.className = `mode-context ${realMode ? "real" : "paper"}`;
-  elements.modeContext.innerHTML = realMode
-    ? `
-      <strong>Real Portfolio Tracker</strong>
-      <span>Track your actual holdings and watchlist. Claude paper trades will not change this section.</span>
-    `
-    : `
-      <strong>Paper Trading Practice</strong>
-      <span>Practice buy and sell ideas with virtual money. Claude API trades stay inside this paper portfolio.</span>
-    `;
-  elements.portfolioHomeTitle.textContent = realOwned
-    ? "Real Holdings"
-    : realWatchlist
-      ? "Real Watchlist"
-      : portfolioPage
-        ? "Paper Portfolio"
-        : "Paper Watchlist";
-  elements.portfolioHomeCopy.textContent = realOwned
-    ? "Track owned shares, average cost, market value, and unrealized profit without mixing it with paper trades."
-    : realWatchlist
-      ? "Follow real-market symbols separately from your owned positions."
-      : portfolioPage
-        ? "Review only the paper positions you own, with cash and profit/loss kept separate from watchlist management."
-        : "Organize paper symbols into groups before opening a stock detail screen or making a practice trade.";
-  elements.portfolioListTitle.textContent = realOwned
-    ? "Owned Stocks"
-    : realWatchlist
-      ? "Watchlist Stocks"
-      : portfolioPage
-        ? "Owned Paper Stocks"
-        : "Watchlist Stocks";
-  elements.form.hidden = portfolioPage || realOwned;
-  elements.realPositionForm.hidden = !realOwned || watchlistPage;
-  elements.groupTabs.hidden = portfolioPage;
-  elements.groupLabel.hidden = portfolioPage;
-  elements.portfolioExport.hidden = !portfolioPage;
-  elements.groupLabel.textContent = realMode ? "Real watchlist" : "Paper groups";
-  elements.input.placeholder = realWatchlist ? "TSLA" : "AAPL";
-  elements.watchlistAddTitle.textContent = isRealOwnedTab()
-    ? "Add or update owned stock"
-    : realWatchlist
-      ? "Add stock to real watch list"
-    : "Add stock to paper group";
-  elements.stockSearch.placeholder = portfolioPage
-    ? "Search owned stocks"
-    : realMode
-      ? "Search real watchlist"
-      : "Search paper watchlist";
-  renderMobileNav();
-}
-
-function comparisonRows() {
-  return currentSymbols().map((symbol) => {
-    const quote = state.quotes.get(symbol);
-    const stats = positionStats(symbol);
-    const performance = state.performance.get(symbol);
-    const performanceLabel = performance?.effectiveLabel || "";
-    return {
-      symbol,
-      price: quote?.regularMarketPrice,
-      dayChange: quote?.regularMarketChangePercent,
-      performance: performance?.changePercent,
-      performanceLabel,
-      shares: stats.shares,
-      value: stats.value,
-      pnl: stats.pnl,
-      pnlPercent: stats.pnlPercent
-    };
-  });
-}
-
-function renderComparisonTable() {
-  elements.comparisonAmount.value = state.comparisonAmount;
-  elements.comparisonUnit.value = state.comparisonUnit;
-  elements.comparisonSort.value = state.comparisonSort;
-  renderComparisonPageContext();
-
-  const rows = comparisonRows();
-  if (!rows.length) {
-    elements.comparisonTable.innerHTML = `<div class="empty-state mini">Add stocks to compare them.</div>`;
-    return;
-  }
-
-  const sortKey = state.comparisonSort;
-  rows.sort((a, b) => {
-    const direction = state.comparisonSortDirection === "asc" ? 1 : -1;
-    if (sortKey === "symbol") return a.symbol.localeCompare(b.symbol) * direction;
-    const aValue = Number(a[sortKey]);
-    const bValue = Number(b[sortKey]);
-    const sorted =
-      (Number.isFinite(aValue) ? aValue : -Infinity) - (Number.isFinite(bValue) ? bValue : -Infinity);
-    return sorted * direction;
-  });
-  const sortMark = (key) =>
-    state.comparisonSort === key ? `<span aria-hidden="true">${state.comparisonSortDirection === "asc" ? "ASC" : "DESC"}</span>` : "";
-
-  elements.comparisonTable.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th><button type="button" data-sort-key="symbol">Symbol ${sortMark("symbol")}</button></th>
-          <th><button type="button" data-sort-key="price">Price ${sortMark("price")}</button></th>
-          <th><button type="button" data-sort-key="dayChange">Day ${sortMark("dayChange")}</button></th>
-          <th><button type="button" data-sort-key="performance">${escapeHtml(comparisonLabel())} ${sortMark("performance")}</button></th>
-          <th><button type="button" data-sort-key="shares">Shares ${sortMark("shares")}</button></th>
-          <th><button type="button" data-sort-key="value">Value ${sortMark("value")}</button></th>
-          <th><button type="button" data-sort-key="pnl">P/L ${sortMark("pnl")}</button></th>
-          <th><button type="button" data-sort-key="pnlPercent">P/L % ${sortMark("pnlPercent")}</button></th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows
-          .map((row) => {
-            const perfClass = (Number(row.performance) || 0) >= 0 ? "up" : "down";
-            const pnlClass = (Number(row.pnl) || 0) >= 0 ? "up" : "down";
-            return `
-              <tr data-symbol="${escapeHtml(row.symbol)}">
-                <td><button type="button" data-action="select" data-symbol="${escapeHtml(row.symbol)}">${escapeHtml(row.symbol)}</button></td>
-                <td>${money(row.price)}</td>
-                <td class="${(Number(row.dayChange) || 0) >= 0 ? "up" : "down"}">${signed(row.dayChange, "%")}</td>
-                <td class="${perfClass}">${signed(row.performance, "%")}${
-                  row.performanceLabel ? ` <small>(${escapeHtml(row.performanceLabel)})</small>` : ""
-                }</td>
-                <td>${row.shares ? row.shares.toLocaleString() : "--"}</td>
-                <td>${money(row.value)}</td>
-                <td class="${pnlClass}">${signedMoney(row.pnl)}</td>
-                <td class="${pnlClass}">${row.shares ? signed(row.pnlPercent, "%") : "--"}</td>
-              </tr>
-            `;
-          })
-          .join("")}
-      </tbody>
-    </table>
-  `;
-}
-
-function renderComparisonPageContext() {
-  if (isRealMode()) {
-    elements.comparisonPageKicker.textContent = "Real portfolio compare";
-    elements.comparisonPageTitle.textContent = "Compare Real Stocks";
-    elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} real portfolio performance`;
-    return;
-  }
-
-  elements.comparisonPageKicker.textContent = "Paper portfolio compare";
-  elements.comparisonPageTitle.textContent = "Compare Paper Stocks";
-  elements.comparisonPeriodLabel.textContent = `${comparisonLabel()} paper performance`;
-}
-
-function resetPaperAccount() {
-  state.cash = STARTING_CASH;
-  state.realizedPnl = 0;
-  state.paperTransactions = [];
-  state.groups.forEach((group) => {
-    group.portfolio = {};
-  });
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-  elements.marketStatus.textContent = "Paper account reset to $100,000";
-}
-
-async function refreshNews(symbol) {
-  elements.newsSource.textContent = "Loading headlines...";
-  elements.newsList.innerHTML = `<div class="empty-state">Fetching related news for ${symbol}</div>`;
-
-  try {
-    const data = await getJson(`/api/news?symbol=${encodeURIComponent(symbol)}`);
-    elements.newsSource.textContent =
-      data.source === "yahoo" ? "Headlines from Yahoo Finance" : "Fallback links shown while news feed is unreachable";
-    renderNews(data.articles);
-  } catch (error) {
-    elements.newsSource.textContent = error.message;
-    elements.newsList.innerHTML = `<div class="empty-state">News is unavailable right now.</div>`;
-  }
-}
-
-function renderWatchlist() {
-  const group = activeGroup();
-  const symbols = currentSymbols();
-  const visibleSymbols = visibleStockSymbols(symbols);
-  renderGroups();
-  renderAccountSummary();
-  renderPortfolioSummary();
-  renderPortfolioHealth();
-  renderComparisonTable();
-  if (elements.stockSearch.value !== state.stockSearch) {
-    elements.stockSearch.value = state.stockSearch;
-  }
-
-  if (!symbols.length) {
-    elements.stockList.innerHTML = `<div class="empty-state">${
-      isPortfolioPage()
-        ? isRealMode()
-          ? "No owned real holdings yet. Add real holdings from the Portfolio form or buy from a stock detail screen."
-          : "No paper positions yet. Open Watchlist, choose a stock, then make a practice buy."
-        : isRealMode()
-          ? "Add your first real watchlist stock."
-          : `Add a ticker symbol to ${escapeHtml(group.name)}.`
-    }</div>`;
-    return;
-  }
-
-  if (!visibleSymbols.length) {
-    elements.stockList.innerHTML = `<div class="empty-state">No stocks match "${escapeHtml(state.stockSearch.trim())}".</div>`;
-    return;
-  }
-
-  elements.stockList.innerHTML = visibleSymbols
-    .map((symbol) => {
-      const quote = state.quotes.get(symbol);
-      const quoteState = quoteStatus(symbol, quote);
-      const change = quote?.regularMarketChange;
-      const changePercent = quote?.regularMarketChangePercent;
-      const direction = Number.isFinite(change) ? (change >= 0 ? "up" : "down") : "neutral";
-      const marketState = quote?.marketState || "WAIT";
-      const stats = positionStats(symbol);
-      const ownedShares = Number(stats.shares) || 0;
-      const ownedShareLabel = ownedShares.toLocaleString(undefined, { maximumFractionDigits: 4 });
-      const status = isPaperMode() ? alertStatus(symbol) : { triggered: false, label: "No alert", className: "" };
-      const isSelected = state.selected === symbol;
-
-      return `
-        <article class="stock-card ${isSelected ? "active expanded" : "compact"} ${direction} ${
-          status.triggered ? "alert-hit" : ""
-        }" data-symbol="${symbol}" draggable="${isPaperMode()}">
-          <button class="stock-main" data-action="select" data-symbol="${symbol}">
-            <span class="stock-title">
-              <strong>${escapeHtml(symbol)}</strong>
-              <em class="market-pill">${escapeHtml(marketState)}</em>
-              <em class="quote-status ${escapeHtml(quoteState.className)}">${escapeHtml(quoteState.label)}</em>
-            </span>
-            <span class="stock-name">${escapeHtml(quote?.shortName || quoteState.detail)}</span>
-            <span class="card-stats">
-              <span>Vol ${compact(quote?.regularMarketVolume)}</span>
-              <span>H ${moneyAxis(quote?.regularMarketDayHigh)}</span>
-              <span>L ${moneyAxis(quote?.regularMarketDayLow)}</span>
-            </span>
-          </button>
-          <button class="quote-meta" data-action="select" data-symbol="${symbol}">
-            <strong>${money(quote?.regularMarketPrice)}</strong>
-            <small class="change-badge ${direction}">${signed(change)} (${signed(changePercent, "%")})</small>
-          </button>
-          <div class="quantity-label">
-            <span>Shares</span>
-            <strong>${ownedShareLabel}</strong>
-          </div>
-          <button class="remove-stock" data-action="remove" data-symbol="${symbol}" title="Remove ${escapeHtml(
-            symbol
-          )}">x</button>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function renderSelectedQuote() {
-  const quote = state.quotes.get(state.selected);
-  if (!quote) {
-    elements.selectedName.textContent = "Select a stock";
-    elements.selectedSymbol.textContent = "--";
-    elements.selectedPrice.textContent = "--";
-    elements.selectedChange.textContent = "--";
-    elements.selectedChange.className = "";
-    elements.selectedPosition.innerHTML = "";
-    drawEmptyChart("Add or select a stock");
-    elements.newsSource.textContent = "Click a stock to load headlines";
-    elements.newsList.innerHTML = "";
-    return;
-  }
-
-  const change = quote.regularMarketChange;
-  const direction = change >= 0 ? "up" : "down";
-  const quoteState = quoteStatus(quote.symbol, quote);
-
-  elements.selectedName.textContent = quote.shortName || "Selected stock";
-  elements.selectedSymbol.textContent = quote.symbol;
-  elements.selectedPrice.textContent = money(quote.regularMarketPrice);
-  const marketTime = quote.regularMarketTime
-    ? new Date(quote.regularMarketTime * 1000).toLocaleTimeString()
-    : "time unknown";
-  const dataAge = quoteState.detail ? ` | ${quoteState.detail}` : "";
-  elements.selectedChange.textContent = `${signed(change)} (${signed(quote.regularMarketChangePercent, "%")}) | Vol ${compact(
-    quote.regularMarketVolume
-  )} | ${quote.marketState || "DATA"} | ${quoteState.label} | ${marketTime}${dataAge}`;
-  elements.selectedChange.className = direction;
-  const stats = positionStats(quote.symbol);
-  const pnlDirection = stats.pnl >= 0 ? "up" : "down";
-  const selectedAlert = isPaperMode() ? alertFor(quote.symbol) : { active: false };
-  const selectedAlertStatus = isPaperMode() ? alertStatus(quote.symbol) : { label: "--", className: "" };
-  const symbol = cleanSymbol(quote.symbol);
-  elements.selectedPosition.innerHTML = `
-    <div>
-      <span>Shares</span>
-      <strong>${stats.shares ? stats.shares.toLocaleString() : "--"}</strong>
-    </div>
-    <div>
-      <span>Avg cost</span>
-      <strong>${stats.avgCost ? money(stats.avgCost) : "--"}</strong>
-    </div>
-    <div>
-      <span>Position value</span>
-      <strong>${money(stats.value)}</strong>
-    </div>
-    <div>
-      <span>Position P/L</span>
-      <strong class="${pnlDirection}">${signedMoney(stats.pnl)} (${signed(stats.pnlPercent, "%")})</strong>
-    </div>
-    <div>
-      <span>${isRealMode() ? "Portfolio" : "Price alert"}</span>
-      <strong class="${selectedAlertStatus.className === "triggered" ? "down" : ""}">${
-        isRealMode() ? "Real tracker" : selectedAlert.active ? selectedAlertStatus.label : "--"
-      }</strong>
-    </div>
-    <section class="selected-actions" aria-label="Selected stock actions">
-      <div class="selected-actions-head">
-        <strong>${isRealMode() ? "Real portfolio actions" : "Paper trading actions"}</strong>
-        <span>${isRealMode() ? "Edit holdings or record a real transaction for this symbol." : "Buy, sell, or set an alert for this paper position."}</span>
+  view.innerHTML = `
+    <div class="page-head">
+      <div>
+        <p class="eyebrow">Portfolios</p>
+        <h2>Your paper accounts</h2>
+        <span>Open a portfolio, create a new strategy, or mirror an outside account with starting holdings.</span>
       </div>
-      ${
-        isPaperMode()
-          ? `
-            <div class="trade-editor">
-              <label>
-                <span>Paper trade</span>
-                <input type="number" min="0" step="0.0001" inputmode="decimal" data-trade-qty data-symbol="${symbol}" placeholder="Shares" />
-              </label>
-              <button type="button" data-trade-action="buy" data-symbol="${symbol}">Buy</button>
-              <button type="button" data-trade-action="sell" data-symbol="${symbol}">Sell</button>
-            </div>
-            <div class="alert-editor">
-              <label class="alert-switch">
-                <span>Alert</span>
-                <input type="checkbox" data-alert-field="active" data-symbol="${symbol}" ${selectedAlert.active ? "checked" : ""} />
-                <i aria-hidden="true"></i>
-              </label>
-              <label>
-                <span>Condition</span>
-                <select data-alert-field="direction" data-symbol="${symbol}">
-                  <option value="above" ${selectedAlert.direction === "above" ? "selected" : ""}>Above</option>
-                  <option value="below" ${selectedAlert.direction === "below" ? "selected" : ""}>Below</option>
-                </select>
-              </label>
-              <label>
-                <span>Target</span>
-                <input type="number" min="0" step="0.01" inputmode="decimal" data-alert-field="target" data-symbol="${symbol}" value="${selectedAlert.target || ""}" />
-              </label>
-            </div>
-          `
-          : `
-            <div class="real-editor">
-              <div class="real-editor-section">
-                <strong>Add existing holding</strong>
-                <label>
-                  <span>Shares</span>
-                  <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-field="shares" data-symbol="${symbol}" value="${stats.shares || ""}" />
-                </label>
-                <label>
-                  <span>Average cost</span>
-                  <input type="number" min="0" step="0.01" inputmode="decimal" data-real-field="avgCost" data-symbol="${symbol}" value="${stats.avgCost || ""}" />
-                </label>
-                <button type="button" data-real-action="save" data-symbol="${symbol}">Save holding</button>
-              </div>
-              <div class="real-editor-section">
-                <strong>Buy or sell transaction</strong>
-                <label>
-                  <span>Shares</span>
-                  <input type="number" min="0" step="0.0001" inputmode="decimal" data-real-trade-qty data-symbol="${symbol}" placeholder="Shares" />
-                </label>
-                <label>
-                  <span>Trade price</span>
-                  <input type="number" min="0" step="0.01" inputmode="decimal" data-real-trade-price data-symbol="${symbol}" value="${
-                    Number.isFinite(quote?.regularMarketPrice) ? Number(quote.regularMarketPrice).toFixed(2) : ""
-                  }" placeholder="Price" />
-                </label>
-                <button type="button" data-real-trade-action="buy" data-symbol="${symbol}">Buy</button>
-                <button type="button" data-real-trade-action="sell" data-symbol="${symbol}">Sell</button>
-              </div>
-            </div>
-          `
-      }
+      <button class="primary-action" type="button" data-action="new-portfolio" title="Create stock or crypto paper portfolio">+ New Portfolio</button>
+    </div>
+    <section class="portfolio-grid">
+      ${state.portfolios.map(portfolioCard).join("")}
+      <button class="portfolio-card add-card" type="button" data-action="new-portfolio" title="Create another portfolio">
+        <strong>+</strong>
+        <span>New Portfolio</span>
+      </button>
     </section>
   `;
 }
 
-function renderNews(articles) {
-  if (!articles.length) {
-    elements.newsList.innerHTML = `<div class="empty-state news-empty">No related articles found.</div>`;
+function renderPortfolio() {
+  const view = elements.views.portfolio;
+  const portfolio = activePortfolio();
+  if (!portfolio) {
+    view.innerHTML = "";
     return;
   }
+  const summary = portfolioSummary(portfolio);
+  view.innerHTML = `
+    <div class="page-head portfolio-context">
+      <div>
+        <button class="text-link" type="button" data-nav="portfolios">All portfolios</button>
+        <p class="eyebrow">${portfolio.account_type === "crypto" ? "Crypto coming soon" : "US Stocks"}</p>
+        <h2>${escapeHtml(portfolio.name)}</h2>
+      </div>
+      <div class="portfolio-actions">
+        <button type="button" data-action="export-portfolio" title="Download current holdings as an Excel file">Export Excel</button>
+        <select id="portfolio-switcher" title="Switch active portfolio">
+          ${state.portfolios.map((item) => `<option value="${item.id}" ${item.id === portfolio.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <section class="summary-strip">
+      <article><span>Total value</span><strong>${money(summary.totalValue)}</strong></article>
+      <article><span>Cash</span><strong>${money(summary.cash)}</strong></article>
+      <article><span>Invested</span><strong>${money(summary.holdingsValue)}</strong></article>
+      <article><span>Today P/L</span><strong class="${summary.todayPnl >= 0 ? "positive" : "negative"}">${signedMoney(summary.todayPnl)}</strong></article>
+      <article><span>Total P/L</span><strong class="${summary.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(summary.totalPnl)}</strong></article>
+    </section>
+    <nav class="subnav">
+      ${["overview", "holdings", "watchlist", "history"].map((tab) => `<button type="button" class="${state.portfolioTab === tab ? "active" : ""}" data-portfolio-tab="${tab}">${tab}</button>`).join("")}
+    </nav>
+    ${renderPortfolioTab(portfolio)}
+  `;
+}
 
-  elements.newsList.innerHTML = articles
-    .slice(0, 8)
-    .map((article, index) => {
-      const date = article.publishedAt ? new Date(article.publishedAt) : null;
-      const sentiment = newsSentiment(article);
-      const summary = article.summary || "Open the article for the full market context.";
-      const shortSummary = summary.length > 190 ? `${summary.slice(0, 187).trim()}...` : summary;
-      return `
-        <article class="news-card ${index === 0 ? "featured" : ""}">
-          <div class="news-meta-row">
-            <span>${escapeHtml(article.publisher || "Market news")}</span>
-            <span class="sentiment ${sentiment.className}">${sentiment.label}</span>
+function renderPortfolioTab(portfolio) {
+  if (portfolio.account_type === "crypto") {
+    return `<section class="empty-state compact"><h3>Crypto portfolios are coming soon.</h3><p>The data model is ready, but trading will be added in a later phase.</p></section>`;
+  }
+  const searchPanel = renderSearchPanel();
+  if (state.portfolioTab === "holdings") return `${searchPanel}${renderHoldingsTable(portfolioHoldings(portfolio.id))}`;
+  if (state.portfolioTab === "watchlist") return `${searchPanel}${renderWatchlistTable(portfolioWatchlist(portfolio.id))}`;
+  if (state.portfolioTab === "history") return renderTradeHistory(portfolioTrades(portfolio.id), true);
+  return `
+    ${searchPanel}
+    <section class="two-column">
+      <div>
+        <div class="section-title"><h3>Holdings</h3><button type="button" data-portfolio-tab="holdings">View all</button></div>
+        ${renderHoldingsTable(portfolioHoldings(portfolio.id).slice(0, 8))}
+      </div>
+      <div>
+        <div class="section-title"><h3>Watchlist</h3><button type="button" data-portfolio-tab="watchlist">View all</button></div>
+        ${renderWatchlistTable(portfolioWatchlist(portfolio.id).slice(0, 8))}
+      </div>
+    </section>
+  `;
+}
+
+function renderSearchPanel() {
+  return `
+    <section class="search-panel">
+      <div>
+        <h3>Add stock</h3>
+        <p>Search by company name or symbol. Choose the result before adding or trading.</p>
+      </div>
+      <form id="asset-search-form" class="search-form">
+        <input id="asset-search-input" placeholder="Search Apple, Tesla, NVDA..." autocomplete="off" />
+        <button type="submit" title="Search stock">Search</button>
+      </form>
+      <div class="popular-row">
+        <span>Popular to explore</span>
+        ${POPULAR_STOCKS.map((symbol) => `<button type="button" data-search-symbol="${symbol}" title="Search ${symbol}">${symbol}</button>`).join("")}
+      </div>
+      <div class="search-results">
+        ${state.searchResults.map(renderSearchResult).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderSearchResult(asset) {
+  const quote = quoteFor(asset.symbol);
+  return `
+    <article class="search-result">
+      <button type="button" class="result-main" data-action="open-stock" data-symbol="${asset.symbol}" title="Open ${asset.symbol}">
+        <strong>${escapeHtml(asset.symbol)}</strong>
+        <span>${escapeHtml(asset.name || "")}</span>
+        <small>${escapeHtml(asset.exchange || "")}</small>
+      </button>
+      <div>
+        <strong>${money(quote?.regularMarketPrice)}</strong>
+        <span class="${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(quote?.regularMarketChangePercent)}</span>
+      </div>
+      <button type="button" data-action="watch-asset" data-symbol="${asset.symbol}" title="Add ${asset.symbol} to watchlist">Watch</button>
+      <button type="button" data-action="trade-asset" data-symbol="${asset.symbol}" title="Buy ${asset.symbol} with paper cash">Buy</button>
+    </article>
+  `;
+}
+
+function renderHoldingsTable(holdings) {
+  if (!holdings.length) {
+    return `<section class="empty-list"><h3>No holdings yet</h3><p>Search a stock to buy it, or add starting holdings to mirror another account.</p></section>`;
+  }
+  return `
+    <div class="data-table holdings-table">
+      <div class="table-row table-head">
+        <span>Stock</span><span>Price</span><span>Shares</span><span>Value</span><span>Today</span><span>Total P/L</span><span></span>
+      </div>
+      ${holdings.map((holding) => {
+        const stats = holdingStats(holding);
+        return `
+          <button class="table-row" type="button" data-action="open-stock" data-symbol="${holding.symbol}" title="Open ${holding.symbol}">
+            <span><strong>${holding.symbol}</strong><small>${escapeHtml(holding.name || stats.quote?.shortName || "")}</small></span>
+            <span>${money(stats.price)}</span>
+            <span>${number(stats.quantity)}</span>
+            <span>${money(stats.value)}</span>
+            <span class="${stats.dayPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.dayPnl)}</span>
+            <span class="${stats.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.totalPnl)} <small>${signedPercent(stats.totalPnlPercent)}</small></span>
+            <span class="row-chevron">View</span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderWatchlistTable(items) {
+  if (!items.length) {
+    return `<section class="empty-list"><h3>No watchlist stocks</h3><p>Use search to follow stocks before buying them.</p></section>`;
+  }
+  return `
+    <div class="data-table watchlist-table">
+      <div class="table-row table-head">
+        <span>Stock</span><span>Price</span><span>Day</span><span></span><span></span>
+      </div>
+      ${items.map((item) => {
+        const quote = quoteFor(item.symbol);
+        return `
+          <div class="table-row">
+            <button type="button" class="stock-cell" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol}">
+              <strong>${item.symbol}</strong><small>${escapeHtml(item.name || quote?.shortName || "")}</small>
+            </button>
+            <span>${money(quote?.regularMarketPrice)}</span>
+            <span class="${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(quote?.regularMarketChangePercent)}</span>
+            <button type="button" data-action="trade-asset" data-symbol="${item.symbol}" title="Buy ${item.symbol}">Buy</button>
+            <button type="button" data-action="remove-watch" data-symbol="${item.symbol}" title="Remove ${item.symbol}">Remove</button>
           </div>
-          <a href="${safeUrl(article.link)}" target="_blank" rel="noreferrer">${escapeHtml(article.title)}</a>
-          <p>${escapeHtml(shortSummary)}</p>
-          <div class="news-foot">
-            <time datetime="${date && !Number.isNaN(date.getTime()) ? date.toISOString() : ""}">
-              ${escapeHtml(relativeTime(article.publishedAt) || "Recently")}
-            </time>
-            <span>${index === 0 ? "Top story" : `Story ${index + 1}`}</span>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
-function fitCanvas() {
-  const ratio = window.devicePixelRatio || 1;
-  const rect = elements.chart.getBoundingClientRect();
-  elements.chart.width = Math.max(320, Math.round(rect.width * ratio));
-  elements.chart.height = Math.max(180, Math.round(rect.height * ratio));
-  return { ratio, width: elements.chart.width, height: elements.chart.height };
+function renderStock() {
+  const view = elements.views.stock;
+  const portfolio = activePortfolio();
+  const symbol = state.selectedSymbol;
+  if (!portfolio || !symbol) {
+    view.innerHTML = "";
+    return;
+  }
+  const quote = quoteFor(symbol);
+  const holding = portfolioHoldings().find((item) => item.symbol === symbol);
+  const stats = holding ? holdingStats(holding) : null;
+  view.innerHTML = `
+    <div class="page-head">
+      <div>
+        <button class="text-link" type="button" data-action="back-to-portfolio">Back to ${escapeHtml(portfolio.name)}</button>
+        <p class="eyebrow">${escapeHtml(quote?.shortName || "Stock detail")}</p>
+        <h2>${symbol}</h2>
+      </div>
+      <div class="stock-price">
+        <strong>${money(quote?.regularMarketPrice)}</strong>
+        <span class="${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(quote?.regularMarketChangePercent)}</span>
+      </div>
+    </div>
+    <nav class="subnav">
+      ${["chart", "trade", "news", "position"].map((tab) => `<button type="button" class="${state.stockTab === tab ? "active" : ""}" data-stock-tab="${tab}">${tab}</button>`).join("")}
+    </nav>
+    <section class="stock-detail-grid">
+      <div class="stock-main">${renderStockTab(symbol, holding, stats)}</div>
+      <aside class="trade-panel">${renderTradePanel(symbol, holding, stats)}</aside>
+    </section>
+  `;
+  if (state.stockTab === "chart") drawChart();
 }
 
-function drawLoadingChart() {
-  state.chartPoints = [];
-  state.chartHoverIndex = null;
-  drawEmptyChart("Loading intraday chart...");
+function renderStockTab(symbol, holding, stats) {
+  if (state.stockTab === "trade") return renderTradePanel(symbol, holding, stats, true);
+  if (state.stockTab === "news") {
+    const articles = state.news?.symbol === symbol ? state.news.articles || [] : [];
+    if (!articles.length) {
+      loadNews(symbol).then(render).catch((error) => setStatus(error.message, "warning"));
+      return `<section class="empty-list"><h3>Loading news...</h3></section>`;
+    }
+    return `<section class="news-list">${articles.map((article) => `
+      <a href="${article.link}" target="_blank" rel="noreferrer">
+        <strong>${escapeHtml(article.title)}</strong>
+        <span>${escapeHtml(article.publisher || "")} • ${new Date(article.publishedAt).toLocaleString()}</span>
+        <p>${escapeHtml(article.summary || "")}</p>
+      </a>
+    `).join("")}</section>`;
+  }
+  if (state.stockTab === "position") {
+    return `
+      <section class="position-card">
+        <h3>Position</h3>
+        ${holding ? `
+          <dl>
+            <div><dt>Shares</dt><dd>${number(stats.quantity)}</dd></div>
+            <div><dt>Average cost</dt><dd>${money(stats.avgCost)}</dd></div>
+            <div><dt>Market value</dt><dd>${money(stats.value)}</dd></div>
+            <div><dt>Today P/L</dt><dd class="${stats.dayPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.dayPnl)}</dd></div>
+            <div><dt>Total P/L</dt><dd class="${stats.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.totalPnl)} (${signedPercent(stats.totalPnlPercent)})</dd></div>
+          </dl>
+        ` : `<p>You do not own ${symbol} in this portfolio.</p>`}
+      </section>
+    `;
+  }
+  return `
+    <section class="chart-card">
+      <div class="chart-head">
+        <h3>Price chart</h3>
+        <div class="periods">${Object.entries(PERIODS).map(([period, label]) => `<button type="button" class="${state.chartPeriod === period ? "active" : ""}" data-period="${period}">${label}</button>`).join("")}</div>
+      </div>
+      <canvas id="stock-chart" width="1000" height="420"></canvas>
+    </section>
+  `;
 }
 
-function drawEmptyChart(label) {
-  state.chartPoints = [];
-  state.chartHoverIndex = null;
-  const { width, height } = fitCanvas();
-  const ctx = elements.chart.getContext("2d");
+function renderTradePanel(symbol, holding, stats, full = false) {
+  const summary = portfolioSummary();
+  return `
+    <section class="trade-ticket ${full ? "full" : ""}">
+      <h3>Paper trade</h3>
+      <p>Cash available: <strong>${money(summary.cash)}</strong></p>
+      ${holding ? `<p>Owned: <strong>${number(stats.quantity)} shares</strong> at ${money(stats.avgCost)}</p>` : `<p>No current position.</p>`}
+      <form class="trade-form" data-symbol="${symbol}">
+        <div class="segmented">
+          <button type="button" class="active" data-side="buy">Buy</button>
+          <button type="button" data-side="sell">Sell</button>
+        </div>
+        <label>
+          <span>Quantity</span>
+          <input name="quantity" type="number" min="0" step="0.0001" inputmode="decimal" required />
+        </label>
+        <button class="primary-action" type="submit">Place paper order</button>
+      </form>
+      <details>
+        <summary>Add starting holding</summary>
+        <form class="starting-form" data-symbol="${symbol}">
+          <label><span>Quantity</span><input name="quantity" type="number" min="0" step="0.0001" required /></label>
+          <label><span>Average cost</span><input name="avgCost" type="number" min="0" step="0.01" required /></label>
+          <button type="submit">Save starting holding</button>
+        </form>
+      </details>
+    </section>
+  `;
+}
+
+function drawChart() {
+  const canvas = document.querySelector("#stock-chart");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(600, rect.width * dpr);
+  canvas.height = 420 * dpr;
+  const width = canvas.width;
+  const height = canvas.height;
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#9aa8af";
-  ctx.font = `${16 * (window.devicePixelRatio || 1)}px system-ui`;
-  ctx.textAlign = "center";
-  ctx.fillText(label, width / 2, height / 2);
-}
-
-function drawChart(points) {
-  const valid = points.filter((point) => Number.isFinite(point.price));
-  if (valid.length < 2) {
-    drawEmptyChart("Not enough price history yet");
+  ctx.fillStyle = "#101418";
+  ctx.fillRect(0, 0, width, height);
+  const points = state.chartPoints.filter((point) => Number.isFinite(Number(point.close || point.price)));
+  if (points.length < 2) {
+    ctx.fillStyle = "#9aa8af";
+    ctx.font = `${16 * dpr}px system-ui`;
+    ctx.fillText("No chart data", 24 * dpr, 44 * dpr);
     return;
   }
-
-  state.chartPoints = valid;
-  renderChart();
-}
-
-function renderChart() {
-  const valid = state.chartPoints;
-  if (valid.length < 2) return;
-
-  const { width, height } = fitCanvas();
-  const ctx = elements.chart.getContext("2d");
-  const prices = valid.flatMap((point) => [pointLow(point), pointHigh(point)]).filter(Number.isFinite);
+  const prices = points.map((point) => Number(point.close || point.price));
   const min = Math.min(...prices);
   const max = Math.max(...prices);
-  const yPadding = (max - min || max * 0.01 || 1) * 0.08;
-  const yMin = min - yPadding;
-  const yMax = max + yPadding;
-  const axisLeft = Math.max(70, width * 0.08);
-  const axisRight = Math.max(18, width * 0.018);
-  const axisTop = Math.max(22, height * 0.07);
-  const axisBottom = Math.max(48, height * 0.15);
-  const plotLeft = axisLeft;
-  const plotRight = width - axisRight;
-  const plotTop = axisTop;
-  const plotBottom = height - axisBottom;
-  const plotWidth = plotRight - plotLeft;
-  const volumeHeight = state.showVolume
-    ? Math.min(Math.max(42, height * 0.18), Math.max(46, (plotBottom - plotTop) * 0.28))
-    : 0;
-  const volumeGap = volumeHeight ? Math.max(8, height * 0.025) : 0;
-  const priceBottom = plotBottom - volumeHeight - volumeGap;
-  const priceHeight = priceBottom - plotTop;
-  const span = max - min || 1;
-  const first = pointPrice(valid[0]);
-  const last = pointPrice(valid[valid.length - 1]);
-  const lineColor = last >= first ? "#44d07b" : "#ff6b6b";
-  const volumeMax = Math.max(...valid.map((point) => Number(point.volume) || 0), 1);
-  const candleWidth = Math.max(3, Math.min(13, (plotWidth / valid.length) * 0.66));
-
-  const xFor = (index) => plotLeft + (index / (valid.length - 1)) * plotWidth;
-  const yFor = (price) => priceBottom - ((price - yMin) / (yMax - yMin || span)) * priceHeight;
-  const volumeYFor = (volume) => plotBottom - ((Number(volume) || 0) / volumeMax) * volumeHeight;
-
-  ctx.clearRect(0, 0, width, height);
-
-  ctx.save();
-  ctx.strokeStyle = "rgba(238, 243, 245, 0.14)";
-  ctx.fillStyle = "#9aa8af";
-  ctx.lineWidth = Math.max(1, width / 1200);
-  ctx.font = `${12 * (window.devicePixelRatio || 1)}px system-ui`;
-  ctx.textBaseline = "middle";
-
-  const yTicks = 5;
-  for (let tick = 0; tick <= yTicks; tick += 1) {
-    const ratio = tick / yTicks;
-    const price = yMax - ratio * (yMax - yMin);
-    const y = plotTop + ratio * priceHeight;
-    ctx.beginPath();
-    ctx.moveTo(plotLeft, y);
-    ctx.lineTo(plotRight, y);
-    ctx.stroke();
-    ctx.textAlign = "right";
-    ctx.fillText(moneyAxis(price), plotLeft - 10, y);
-  }
-
-  const xTicks = Math.min(5, valid.length - 1);
-  ctx.textBaseline = "top";
-  for (let tick = 0; tick <= xTicks; tick += 1) {
-    const index = Math.round((tick / xTicks) * (valid.length - 1));
-    const x = xFor(index);
-    ctx.beginPath();
-    ctx.moveTo(x, plotTop);
-    ctx.lineTo(x, plotBottom);
-    ctx.stroke();
-    ctx.textAlign = tick === 0 ? "left" : tick === xTicks ? "right" : "center";
-    ctx.fillText(axisTimeLabel(valid[index].time), x, plotBottom + 12);
-  }
-
-  ctx.strokeStyle = "rgba(238, 243, 245, 0.38)";
+  const pad = 28 * dpr;
+  const xFor = (index) => pad + (index / (points.length - 1)) * (width - pad * 2);
+  const yFor = (price) => height - pad - ((price - min) / Math.max(1, max - min)) * (height - pad * 2);
+  ctx.strokeStyle = "#62c8dd";
+  ctx.lineWidth = 2.4 * dpr;
   ctx.beginPath();
-  ctx.moveTo(plotLeft, plotTop);
-  ctx.lineTo(plotLeft, plotBottom);
-  ctx.lineTo(plotRight, plotBottom);
+  prices.forEach((price, index) => {
+    const x = xFor(index);
+    const y = yFor(price);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
   ctx.stroke();
-
-  if (volumeHeight) {
-    ctx.strokeStyle = "rgba(238, 243, 245, 0.22)";
-    ctx.beginPath();
-    ctx.moveTo(plotLeft, priceBottom + volumeGap / 2);
-    ctx.lineTo(plotRight, priceBottom + volumeGap / 2);
-    ctx.stroke();
-
-    const barWidth = Math.max(2, Math.min(10, (plotWidth / valid.length) * 0.58));
-    valid.forEach((point, index) => {
-      const open = Number.isFinite(point.open) ? point.open : pointPrice(valid[index - 1]) || pointPrice(point);
-      const close = pointPrice(point);
-      const isUp = close >= open;
-      const x = xFor(index) - barWidth / 2;
-      const y = volumeYFor(point.volume);
-      ctx.fillStyle = isUp ? "rgba(68, 208, 123, 0.34)" : "rgba(255, 107, 107, 0.34)";
-      ctx.fillRect(x, y, barWidth, Math.max(1, plotBottom - y));
-    });
-
-    ctx.fillStyle = "#9aa8af";
-    ctx.font = `${11 * (window.devicePixelRatio || 1)}px system-ui`;
-    ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-    ctx.fillText(compact(volumeMax), plotLeft - 10, priceBottom + volumeGap + 4);
-  }
-
   ctx.fillStyle = "#eef3f5";
-  ctx.textAlign = "center";
-  ctx.fillText("Time", plotLeft + plotWidth / 2, height - 18);
-  ctx.save();
-  ctx.translate(18, plotTop + priceHeight / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText("Price", 0, 0);
-  ctx.restore();
-
-  if (state.chartMode === "candles") {
-    valid.forEach((point, index) => {
-      const close = pointPrice(point);
-      const open = Number.isFinite(point.open) ? point.open : close;
-      const high = pointHigh(point);
-      const low = pointLow(point);
-      const x = xFor(index);
-      const isUp = close >= open;
-      const color = isUp ? "#44d07b" : "#ff6b6b";
-      const top = yFor(Math.max(open, close));
-      const bottom = yFor(Math.min(open, close));
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = Math.max(1, width / 1200);
-      ctx.beginPath();
-      ctx.moveTo(x, yFor(high));
-      ctx.lineTo(x, yFor(low));
-      ctx.stroke();
-
-      ctx.fillStyle = isUp ? "rgba(68, 208, 123, 0.85)" : "rgba(255, 107, 107, 0.85)";
-      ctx.fillRect(x - candleWidth / 2, top, candleWidth, Math.max(1.5, bottom - top));
-    });
-  } else {
-    ctx.lineWidth = Math.max(2, width / 420);
-    ctx.strokeStyle = lineColor;
-    ctx.beginPath();
-    valid.forEach((point, index) => {
-      const x = xFor(index);
-      const y = yFor(pointPrice(point));
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    const gradient = ctx.createLinearGradient(0, plotTop, 0, priceBottom);
-    gradient.addColorStop(0, `${lineColor}55`);
-    gradient.addColorStop(1, `${lineColor}00`);
-
-    ctx.lineTo(xFor(valid.length - 1), priceBottom);
-    ctx.lineTo(xFor(0), priceBottom);
-    ctx.closePath();
-    ctx.fillStyle = gradient;
-    ctx.fill();
-  }
-
-  if (state.showMA) {
-    [
-      { label: "MA20", values: movingAverage(valid, 20), color: "#58c7f3" },
-      { label: "MA50", values: movingAverage(valid, 50), color: "#f0c85a" }
-    ].forEach((average, averageIndex) => {
-      if (!average.values.some(Number.isFinite)) return;
-
-      ctx.strokeStyle = average.color;
-      ctx.lineWidth = Math.max(1.5, width / 720);
-      ctx.beginPath();
-      average.values.forEach((value, index) => {
-        if (!Number.isFinite(value)) return;
-        const x = xFor(index);
-        const y = yFor(value);
-        if (index === average.values.findIndex(Number.isFinite)) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-
-      ctx.fillStyle = average.color;
-      ctx.font = `${12 * (window.devicePixelRatio || 1)}px system-ui`;
-      ctx.textAlign = "right";
-      ctx.textBaseline = "top";
-      ctx.fillText(average.label, plotRight - averageIndex * 48, 4);
-    });
-  }
-
-  ctx.fillStyle = "#eef3f5";
-  ctx.font = `${14 * (window.devicePixelRatio || 1)}px system-ui`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText(`High ${money(max)}  Low ${money(min)}`, plotLeft, 4);
-
-  if (Number.isInteger(state.chartHoverIndex)) {
-    const hoverIndex = Math.max(0, Math.min(valid.length - 1, state.chartHoverIndex));
-    const point = valid[hoverIndex];
-    const hoverX = xFor(hoverIndex);
-    const close = pointPrice(point);
-    const hoverY = yFor(close);
-    const tooltipLines =
-      state.chartMode === "candles"
-        ? [
-            `C ${moneyAxis(close)}`,
-            `O ${moneyAxis(point.open)}  H ${moneyAxis(pointHigh(point))}`,
-            `L ${moneyAxis(pointLow(point))}  V ${compact(point.volume)}`,
-            tooltipTimeLabel(point.time)
-          ]
-        : [moneyAxis(close), `Vol ${compact(point.volume)}`, tooltipTimeLabel(point.time)];
-    const tooltipWidth = Math.max(...tooltipLines.map((line) => ctx.measureText(line).width)) + 22;
-    const tooltipHeight = 18 + tooltipLines.length * 18;
-    const tooltipX = Math.min(Math.max(hoverX + 12, plotLeft), plotRight - tooltipWidth);
-    const tooltipY = Math.max(plotTop + 8, hoverY - tooltipHeight - 12);
-
-    ctx.strokeStyle = "rgba(238, 243, 245, 0.5)";
-    ctx.lineWidth = Math.max(1, width / 1100);
-    ctx.beginPath();
-    ctx.moveTo(hoverX, plotTop);
-    ctx.lineTo(hoverX, plotBottom);
-    ctx.moveTo(plotLeft, hoverY);
-    ctx.lineTo(plotRight, hoverY);
-    ctx.stroke();
-
-    ctx.fillStyle = lineColor;
-    ctx.beginPath();
-    ctx.arc(hoverX, hoverY, Math.max(4, width / 260), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#121619";
-    ctx.lineWidth = Math.max(2, width / 500);
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(18, 22, 25, 0.96)";
-    ctx.strokeStyle = "rgba(238, 243, 245, 0.22)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 8);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = "#eef3f5";
-    ctx.font = `${13 * (window.devicePixelRatio || 1)}px system-ui`;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    tooltipLines.forEach((line, index) => {
-      ctx.fillStyle = index === 0 ? "#eef3f5" : "#9aa8af";
-      ctx.fillText(line, tooltipX + 11, tooltipY + 9 + index * 18);
-    });
-  }
-
-  ctx.restore();
+  ctx.font = `${13 * dpr}px system-ui`;
+  ctx.fillText(`High ${money(max)}  Low ${money(min)}`, pad, 22 * dpr);
 }
 
-async function selectStock(symbol) {
-  const shouldOpenMobileDetail = window.matchMedia?.("(max-width: 880px)")?.matches;
-  const clickedOpenDesktopCard = !shouldOpenMobileDetail && state.showDetailsPanel && state.selected === symbol;
-
-  if (clickedOpenDesktopCard) {
-    state.selected = null;
-    state.mobileDetailOpen = false;
-    state.showDetailsPanel = false;
-    localStorage.setItem("stock-dashboard-show-details-panel", "false");
-    renderSectionVisibility();
-    renderWatchlist();
-    renderSelectedQuote();
-    elements.marketStatus.textContent = "Chart and news closed. Select a stock to open details.";
+function renderCompare() {
+  const view = elements.views.compare;
+  const portfolio = activePortfolio();
+  if (!portfolio) {
+    view.innerHTML = `<section class="empty-state compact"><h2>Create a portfolio first</h2></section>`;
     return;
   }
-
-  state.selected = symbol;
-  if (shouldOpenMobileDetail) {
-    state.mobileDetailOpen = true;
-    state.showDetailsPanel = true;
-    localStorage.setItem("stock-dashboard-show-details-panel", "true");
-    renderSectionVisibility();
-  } else {
-    state.mobileDetailOpen = false;
-    state.showDetailsPanel = true;
-    localStorage.setItem("stock-dashboard-show-details-panel", "true");
-    renderSectionVisibility();
-  }
-  renderWatchlist();
-  renderSelectedQuote();
-  if (!state.showDetailsPanel && !state.mobileDetailOpen) {
-    elements.marketStatus.textContent = `Selected ${symbol}. Use the side arrow to open chart, news, and trading controls.`;
-  }
-  await Promise.all([refreshHistory(symbol), refreshNews(symbol)]);
-}
-
-function getDragAfterCard(container, x, y) {
-  const cards = [...container.querySelectorAll(".stock-card:not(.dragging)")];
-  return cards.find((card) => {
-    const rect = card.getBoundingClientRect();
-    const midpointY = rect.top + rect.height / 2;
-    const midpointX = rect.left + rect.width / 2;
-    const sameRow = y >= rect.top && y <= rect.bottom;
-    return y < midpointY || (sameRow && x < midpointX);
+  const rows = allSymbols(portfolio.id).map((symbol) => {
+    const holding = portfolioHoldings(portfolio.id).find((item) => item.symbol === symbol);
+    const quote = quoteFor(symbol);
+    const performance = state.performance.get(symbol);
+    const stats = holding ? holdingStats(holding) : null;
+    return { symbol, quote, performance, stats, holding };
   });
-}
-
-function saveDraggedCardOrder() {
-  if (isRealMode()) return;
-  const group = activeGroup();
-  const orderedSymbols = [...elements.stockList.querySelectorAll(".stock-card")]
-    .map((card) => cleanSymbol(card.dataset.symbol))
-    .filter(Boolean);
-
-  if (orderedSymbols.length !== group.symbols.length) return;
-  group.symbols = orderedSymbols;
-  saveGroups();
-  renderWatchlist();
-}
-
-async function addOrUpdateRealPosition(symbol, shares, avgCost) {
-  const cleaned = cleanSymbol(symbol);
-  const positionShares = Math.max(0, Number(shares) || 0);
-  const positionAvgCost = Math.max(0, Number(avgCost) || 0);
-  if (!cleaned || positionShares <= 0) {
-    setAddStockMessage("Enter a valid stock symbol and share count.", "error");
-    return;
-  }
-
-  setAddStockMessage(`Checking ${cleaned}...`);
-  const quote = await lookupStockBeforeAdd(cleaned);
-  if (!quote) return;
-
-  const resolvedSymbol = cleanSymbol(quote.symbol);
-  const existing = state.realPositions[resolvedSymbol] || {};
-  state.removedRealSymbols.delete(resolvedSymbol);
-  state.realPositions[resolvedSymbol] = {
-    shares: positionShares,
-    avgCost: positionAvgCost,
-    openedAt: existing.openedAt || Date.now()
-  };
-  state.realPortfolioTouched = true;
-  recordRealTransaction({
-    type: "set",
-    symbol: resolvedSymbol,
-    shares: positionShares,
-    avgCost: positionAvgCost,
-    total: positionShares * positionAvgCost,
-    source: "manual"
+  rows.sort((a, b) => {
+    const direction = state.compareDirection === "asc" ? 1 : -1;
+    const get = (row) =>
+      state.compareSort === "performance"
+        ? Number(row.performance?.changePercent) || 0
+        : state.compareSort === "value"
+          ? Number(row.stats?.value) || 0
+          : state.compareSort === "pnl"
+            ? Number(row.stats?.totalPnl) || 0
+            : state.compareSort === "price"
+              ? Number(row.quote?.regularMarketPrice) || 0
+              : row.symbol;
+    const av = get(a);
+    const bv = get(b);
+    return typeof av === "string" ? av.localeCompare(bv) * direction : (av - bv) * direction;
   });
-  state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
-  state.quotes.set(resolvedSymbol, quote);
-  state.selected = resolvedSymbol;
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-  setAddStockMessage(`${resolvedSymbol} real position saved.`, "success");
-  await refreshQuotes();
-  await refreshNews(resolvedSymbol);
+  view.innerHTML = `
+    <div class="page-head">
+      <div><p class="eyebrow">Compare</p><h2>${escapeHtml(portfolio.name)}</h2><span>Holdings and watchlist performance for the active portfolio.</span></div>
+      <button type="button" data-action="refresh-performance">Update</button>
+    </div>
+    <div class="data-table compare-table">
+      <div class="table-row table-head">
+        ${["symbol", "price", "performance", "value", "pnl"].map((column) => `<button type="button" data-sort="${column}">${column}</button>`).join("")}
+      </div>
+      ${rows.map((row) => `
+        <button class="table-row" type="button" data-action="open-stock" data-symbol="${row.symbol}">
+          <span><strong>${row.symbol}</strong><small>${row.holding ? "Holding" : "Watchlist"}</small></span>
+          <span>${money(row.quote?.regularMarketPrice)}</span>
+          <span class="${Number(row.performance?.changePercent) >= 0 ? "positive" : "negative"}">${signedPercent(row.performance?.changePercent)} ${row.performance?.effectiveLabel ? `<small>(${escapeHtml(row.performance.effectiveLabel)})</small>` : ""}</span>
+          <span>${row.stats ? money(row.stats.value) : "--"}</span>
+          <span class="${Number(row.stats?.totalPnl) >= 0 ? "positive" : "negative"}">${row.stats ? signedMoney(row.stats.totalPnl) : "--"}</span>
+        </button>
+      `).join("") || `<section class="empty-list"><h3>No symbols to compare</h3></section>`}
+    </div>
+  `;
 }
 
-async function executeRealTrade(symbol, action, quantity, tradePrice) {
-  const cleaned = cleanSymbol(symbol);
-  const qty = Math.max(0, Number(quantity) || 0);
-
-  if (!cleaned || !qty) {
-    elements.marketStatus.textContent = "Enter real stock symbol and share count";
-    return;
-  }
-
-  const quote = state.quotes.get(cleaned) || (await lookupStockBeforeAdd(cleaned));
-  if (!quote) return;
-
-  const resolvedSymbol = cleanSymbol(quote?.symbol || cleaned);
-  const livePrice = Number(quote?.regularMarketPrice);
-  const enteredPrice = Number(tradePrice);
-  const usingEnteredPrice = Number.isFinite(enteredPrice) && enteredPrice > 0;
-  const price = Math.max(0, Number.isFinite(enteredPrice) && enteredPrice > 0 ? enteredPrice : livePrice);
-  if (!price) {
-    elements.marketStatus.textContent = `Live price is not available for ${resolvedSymbol}`;
-    return;
-  }
-
-  const position = state.realPositions[resolvedSymbol] || { shares: 0, avgCost: 0, openedAt: null };
-
-  if (action === "buy") {
-    state.removedRealSymbols.delete(resolvedSymbol);
-    const existingCost = Number(position.shares) * Number(position.avgCost);
-    const addedCost = qty * price;
-    position.shares = Math.max(0, Number(position.shares) || 0) + qty;
-    position.avgCost = position.shares ? (existingCost + addedCost) / position.shares : 0;
-    position.openedAt ||= Date.now();
-    state.realPositions[resolvedSymbol] = {
-      shares: Number(position.shares.toFixed(6)),
-      avgCost: Number(position.avgCost.toFixed(4)),
-      openedAt: position.openedAt
-    };
-    state.realPortfolioTouched = true;
-    recordRealTransaction({
-      type: "buy",
-      symbol: resolvedSymbol,
-      shares: qty,
-      price,
-      total: qty * price,
-      source: usingEnteredPrice ? "entered" : "live"
-    });
-    state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
-    state.activeRealTab = "owned";
-    state.mainPage = "portfolio";
-    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
-    elements.marketStatus.textContent = `Bought ${qty} real ${resolvedSymbol} at ${moneyAxis(price)}`;
-  } else {
-    const currentShares = Number(position.shares) || 0;
-    if (qty > currentShares) {
-      elements.marketStatus.textContent = `You only have ${currentShares.toLocaleString()} real ${resolvedSymbol} shares`;
-      return;
-    }
-    position.shares = Math.max(0, currentShares - qty);
-    if (position.shares <= 0) {
-      delete state.realPositions[resolvedSymbol];
-      state.realPortfolioTouched = true;
-      state.selected = currentSymbols()[0] || null;
-    } else {
-      state.realPositions[resolvedSymbol] = {
-        shares: Number(position.shares.toFixed(6)),
-        avgCost: Number(position.avgCost.toFixed(4)),
-        openedAt: position.openedAt || Date.now()
-      };
-      state.realPortfolioTouched = true;
-    }
-    recordRealTransaction({
-      type: "sell",
-      symbol: resolvedSymbol,
-      shares: qty,
-      price,
-      total: qty * price,
-      source: usingEnteredPrice ? "entered" : "live"
-    });
-    elements.marketStatus.textContent = `Sold ${qty} real ${resolvedSymbol} at ${moneyAxis(price)}`;
-  }
-
-  if (quote?.symbol) state.quotes.set(resolvedSymbol, quote);
-  if (action === "buy") state.selected = resolvedSymbol;
-  state.performance.clear();
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-  setAddStockMessage(
-    `${action === "buy" ? "Bought" : "Sold"} ${qty} ${resolvedSymbol} at ${moneyAxis(price)}.`,
-    "success"
+function renderHistory() {
+  const view = elements.views.history;
+  const trades = state.portfolios.flatMap((portfolio) =>
+    portfolioTrades(portfolio.id).map((trade) => ({ ...trade, portfolioName: portfolio.name }))
   );
-  refreshPerformance({ quiet: true });
+  view.innerHTML = `
+    <div class="page-head">
+      <div><p class="eyebrow">History</p><h2>All paper trades</h2><span>Every buy, sell, and starting position across portfolios.</span></div>
+    </div>
+    ${renderTradeHistory(trades, false)}
+  `;
 }
 
-function setPortfolioMode(mode) {
-  state.portfolioMode = mode === "real" ? "real" : "paper";
-  state.activeRealTab = isWatchlistPage() ? "watchlist" : "owned";
-  localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
-  state.comparisonPageOpen = false;
-  state.historyPageOpen = false;
-  state.settingsPageOpen = false;
-  clearStockSearch();
-  state.selected = currentSymbols()[0] || null;
-  state.performance.clear();
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-  refreshPerformance({ quiet: true });
-  renderComparisonPageVisibility();
-  if (state.selected) {
-    refreshHistory(state.selected);
-    refreshNews(state.selected);
-  }
+function renderTradeHistory(trades, compact) {
+  if (!trades.length) return `<section class="empty-list"><h3>No trades yet</h3><p>Trades will appear here after buying, selling, or adding starting holdings.</p></section>`;
+  return `
+    <div class="history-list ${compact ? "compact" : ""}">
+      ${trades.map((trade) => `
+        <article class="trade-row ${trade.trade_type}">
+          <div><strong>${escapeHtml(trade.symbol)}</strong><span>${escapeHtml(trade.portfolioName || "")}</span></div>
+          <span>${escapeHtml(trade.trade_type.replace("_", " "))}</span>
+          <span>${number(trade.quantity)} @ ${money(trade.price)}</span>
+          <span>${money(trade.total)}</span>
+          <time>${new Date(trade.created_at).toLocaleString()}</time>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
-function setRealTab(tab) {
-  state.activeRealTab = tab === "watchlist" ? "watchlist" : "owned";
-  state.mainPage = state.activeRealTab === "watchlist" ? "watchlist" : "portfolio";
-  clearStockSearch();
-  state.selected = currentSymbols()[0] || null;
-  state.performance.clear();
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-  refreshPerformance({ quiet: true });
-  if (state.selected) {
-    refreshQuotes();
-    selectStock(state.selected);
-  }
+function renderAi() {
+  const view = elements.views.ai;
+  view.innerHTML = `
+    <div class="page-head">
+      <div><p class="eyebrow">AI Trading</p><h2>Claude paper controls</h2><span>Create keys in Settings, then choose which portfolios Claude can trade.</span></div>
+      <button type="button" data-action="load-api-keys">Refresh keys</button>
+    </div>
+    <section class="ai-grid">
+      ${state.portfolios.map((portfolio) => {
+        const setting = state.aiSettings.get(portfolio.id) || {};
+        return `
+          <article class="ai-card">
+            <div><h3>${escapeHtml(portfolio.name)}</h3><span>${portfolio.account_type === "crypto" ? "Crypto coming soon" : "US Stocks"}</span></div>
+            <label class="switch"><input type="checkbox" data-ai-field="enabled" data-id="${portfolio.id}" ${setting.enabled ? "checked" : ""} /><span>Allow Claude trades</span></label>
+            <label class="switch"><input type="checkbox" data-ai-field="allow_buy" data-id="${portfolio.id}" ${setting.allow_buy !== false ? "checked" : ""} /><span>Buy allowed</span></label>
+            <label class="switch"><input type="checkbox" data-ai-field="allow_sell" data-id="${portfolio.id}" ${setting.allow_sell !== false ? "checked" : ""} /><span>Sell allowed</span></label>
+            <label><span>Max trade size %</span><input data-ai-field="max_trade_percent" data-id="${portfolio.id}" type="number" min="1" max="100" value="${Number(setting.max_trade_percent) || 10}" /></label>
+            <label><span>Max daily trades</span><input data-ai-field="max_daily_trades" data-id="${portfolio.id}" type="number" min="1" max="50" value="${Number(setting.max_daily_trades) || 5}" /></label>
+          </article>
+        `;
+      }).join("") || `<section class="empty-list"><h3>Create a portfolio first</h3></section>`}
+    </section>
+  `;
 }
 
-async function addRealWatchlistSymbol(symbol) {
-  const cleaned = cleanSymbol(symbol);
-  if (!cleaned) return;
-  if (state.realWatchlist.includes(cleaned)) {
-    setAddStockMessage(`${cleaned} is already in the real watch list.`, "error");
-    return;
-  }
-  if (state.realPositions[cleaned]) {
-    setAddStockMessage(`${cleaned} is already in Own stock.`, "error");
-    return;
-  }
-
-  setAddStockMessage(`Checking ${cleaned}...`);
-  const quote = await lookupStockBeforeAdd(cleaned);
-  if (!quote) return;
-
-  const resolvedSymbol = cleanSymbol(quote.symbol);
-  if (!state.realWatchlist.includes(resolvedSymbol) && !state.realPositions[resolvedSymbol]) {
-    state.removedRealSymbols.delete(resolvedSymbol);
-    state.realWatchlist = [resolvedSymbol, ...state.realWatchlist];
-  }
-  state.quotes.set(resolvedSymbol, quote);
-  state.selected = resolvedSymbol;
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-  setAddStockMessage(`${resolvedSymbol} added to real watch list.`, "success");
-  await refreshQuotes();
-  await refreshNews(resolvedSymbol);
+function renderSettings() {
+  const view = elements.views.settings;
+  view.innerHTML = `
+    <div class="page-head">
+      <div><p class="eyebrow">Settings</p><h2>Account and API keys</h2><span>Technical setup lives here, away from the trading workflow.</span></div>
+    </div>
+    <section class="settings-grid">
+      <article class="settings-card"><span>User</span><strong>${escapeHtml(state.session?.user?.email || "")}</strong></article>
+      <article class="settings-card"><span>Supabase</span><strong>${state.supabase ? "Connected" : "Missing"}</strong></article>
+      <article class="settings-card"><span>Claude API</span><strong>${state.config?.paperApiKeysEnabled ? "Available" : "Service key missing"}</strong></article>
+    </section>
+    <section class="api-panel">
+      <div><h3>Claude API keys</h3><p>Keys allow paper-only actions. Portfolio permissions are controlled on the AI Trading page.</p></div>
+      <button type="button" data-action="create-api-key">Create API key</button>
+      <pre id="new-api-secret" hidden></pre>
+      <div class="api-list">
+        ${state.apiKeys.map((key) => `
+          <article>
+            <strong>${escapeHtml(key.name || "Claude key")}</strong>
+            <span>${escapeHtml(key.key_prefix)} • ${escapeHtml(key.status)}</span>
+            <button type="button" data-action="revoke-api-key" data-id="${key.id}">Revoke</button>
+          </article>
+        `).join("") || `<p>No API keys yet.</p>`}
+      </div>
+    </section>
+  `;
 }
 
-elements.form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (isRealWatchlistTab()) {
-    await addRealWatchlistSymbol(elements.input.value);
-    elements.input.value = "";
-    return;
-  }
-
-  const group = activeGroup();
-  const symbol = cleanSymbol(elements.input.value);
-  if (!symbol || group.symbols.includes(symbol)) {
-    if (symbol && group.symbols.includes(symbol)) {
-      setAddStockMessage(`${symbol} is already in this group.`, "error");
-    }
-    elements.input.value = "";
-    return;
-  }
-
-  setAddStockMessage(`Checking ${symbol}...`);
-  const quote = await lookupStockBeforeAdd(symbol);
-  if (!quote) {
-    elements.input.select();
-    return;
-  }
-
-  const resolvedSymbol = cleanSymbol(quote.symbol);
-  if (group.symbols.includes(resolvedSymbol)) {
-    elements.input.value = "";
-    setAddStockMessage(`${resolvedSymbol} is already in this group.`, "error");
-    return;
-  }
-
-  group.symbols = [resolvedSymbol, ...group.symbols].slice(0, 20);
-  state.quotes.set(resolvedSymbol, quote);
-  state.selected = resolvedSymbol;
-  saveGroups();
-  elements.input.value = "";
-  setAddStockMessage(`${resolvedSymbol} added to ${group.name}.`, "success");
-  await refreshQuotes();
-  await refreshNews(resolvedSymbol);
-});
-
-elements.realPositionForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const action = event.submitter?.value || "set";
-  if (action === "buy-live") {
-    await executeRealTrade(elements.realSymbol.value, "buy", elements.realShares.value);
-  } else {
-    await addOrUpdateRealPosition(
-      elements.realSymbol.value,
-      elements.realShares.value,
-      elements.realAvgCost.value
-    );
-  }
-  elements.realSymbol.value = "";
-  elements.realShares.value = "";
-  elements.realAvgCost.value = "";
-});
-
-elements.portfolioModeButtons.forEach((button) => {
-  button.addEventListener("click", () => setPortfolioMode(button.dataset.portfolioMode));
-});
-
-elements.appNavButtons.forEach((button) => {
-  button.addEventListener("click", () => navigateMain(button.dataset.appNav));
-});
-
-elements.mobileNavButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    navigateMain(button.dataset.mobileNav, { scroll: true });
+function exportPortfolio() {
+  const portfolio = activePortfolio();
+  if (!portfolio) return;
+  const headers = ["Symbol", "Name", "Quantity", "Average Cost", "Current Price", "Market Value", "Total P/L", "Total P/L %"];
+  const rows = portfolioHoldings(portfolio.id).map((holding) => {
+    const stats = holdingStats(holding);
+    return [holding.symbol, holding.name || "", stats.quantity, stats.avgCost, stats.price || "", stats.value, stats.totalPnl, stats.totalPnlPercent];
   });
-});
+  const xmlRows = [headers, ...rows]
+    .map((row) => `<Row>${row.map((cell) => `<Cell><Data ss:Type="${Number.isFinite(Number(cell)) && cell !== "" ? "Number" : "String"}">${escapeHtml(cell)}</Data></Cell>`).join("")}</Row>`)
+    .join("");
+  const xml = `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Portfolio"><Table>${xmlRows}</Table></Worksheet></Workbook>`;
+  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `poshkan-${portfolio.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xls`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 
-elements.authForm.addEventListener("submit", async (event) => {
+async function handleAuth(event) {
   event.preventDefault();
-  const action = state.authMode;
   const email = elements.authEmail.value.trim();
   const password = elements.authPassword.value;
-  const username = elements.authUsername.value.trim().slice(0, 32);
-  const startingCash = Math.min(Math.max(Number(elements.authStartingCash.value) || STARTING_CASH, 1000), 10000000);
-  const experience = elements.authExperience.value;
-
-  if (!state.supabase) {
-    setAuthMessage("Supabase is not configured yet.", "error");
-    return;
+  const username = elements.authUsername.value.trim();
+  elements.authSubmit.disabled = true;
+  try {
+    const result =
+      state.authMode === "signup"
+        ? await state.supabase.auth.signUp({ email, password, options: { data: { display_name: username } } })
+        : await state.supabase.auth.signInWithPassword({ email, password });
+    if (result.error) throw result.error;
+    elements.authMessage.textContent = state.authMode === "signup" ? "Account created. Check your email if confirmation is required." : "";
+  } catch (error) {
+    elements.authMessage.textContent = error.message;
+  } finally {
+    elements.authSubmit.disabled = false;
   }
+}
 
-  if (action === "signup" && (!username || !experience)) {
-    setAuthMessage("Enter a user name and choose your trading experience.", "error");
-    return;
+async function signOut() {
+  const client = state.supabase;
+  state.session = null;
+  state.user = null;
+  state.portfolios = [];
+  render();
+  await client.auth.signOut({ scope: "local" });
+  await client.auth.signOut();
+}
+
+async function boot() {
+  try {
+    await loadConfig();
+    const { data } = await state.supabase.auth.getSession();
+    state.session = data.session;
+    if (state.session) {
+      await loadCloudData();
+      state.page = state.selectedPortfolioId ? "portfolio" : "portfolios";
+    }
+    state.supabase.auth.onAuthStateChange(async (_event, session) => {
+      state.session = session;
+      if (session) {
+        await loadCloudData();
+        state.page = state.selectedPortfolioId ? "portfolio" : "portfolios";
+      }
+      render();
+    });
+    render();
+  } catch (error) {
+    elements.authMessage.textContent = error.message;
   }
-
-  setAuthMessage(action === "signup" ? "Creating account..." : "Signing in...");
-  const request =
-    action === "signup"
-      ? state.supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              username,
-              starting_cash: startingCash,
-              trading_experience: experience
-            }
-          }
-        })
-      : state.supabase.auth.signInWithPassword({ email, password });
-  const { data, error } = await request;
-
-  if (error) {
-    setAuthMessage(error.message, "error");
-    return;
-  }
-
-  state.session = data.session || null;
-  if (action === "signup" && state.session) {
-    state.cash = startingCash;
-    state.realizedPnl = 0;
-    saveGroups();
-  }
-  if (!data.session && action === "signup") {
-    setAuthMessage("Account created. Check your email if confirmation is enabled.", "success");
-    return;
-  }
-
-  setAuthMessage("");
-  renderAuthState();
-});
+}
 
 elements.authModeButtons.forEach((button) => {
-  button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
-});
-
-elements.signOut.addEventListener("click", async () => {
-  if (!state.supabase) return;
-  const client = state.supabase;
-  elements.signOut.disabled = true;
-  elements.signOut.textContent = "Signing out...";
-
-  clearSignedOutState();
-
-  try {
-    const { error } = await client.auth.signOut({ scope: "local" });
-    if (error) throw error;
-  } catch (error) {
-    setAuthMessage(`Signed out locally. ${error.message || "Cloud sign-out did not finish."}`, "success");
-  } finally {
-    client.auth.signOut().catch(() => {});
-    elements.signOut.disabled = false;
-    elements.signOut.textContent = "Sign out";
-  }
-});
-
-elements.groupTabs.addEventListener("click", async (event) => {
-  const button = event.target.closest("button");
-  if (!button) return;
-
-  if (button.dataset.realTab) {
-    setRealTab(button.dataset.realTab);
-    return;
-  }
-
-  if (isRealMode()) return;
-
-  if (button.dataset.action === "show-group-input") {
-    showGroupInput();
-    return;
-  }
-
-  if (button.dataset.action === "remove-active-group") {
-    const group = activeGroup();
-    if (state.groups.length <= 1) {
-      elements.marketStatus.textContent = "Keep at least one group";
-      return;
-    }
-
-    const confirmed = window.confirm(`Remove "${group.name}" and its stocks, positions, and alerts?`);
-    if (!confirmed) return;
-
-    state.groups = state.groups.filter((item) => item.id !== group.id);
-    state.activeGroupId = state.groups[0].id;
-    state.creatingGroup = false;
-    state.renamingGroupId = null;
-    clearStockSearch();
-    state.selected = currentSymbols()[0] || null;
-    saveGroups();
-    renderWatchlist();
-    renderSelectedQuote();
-    if (state.selected) {
-      await refreshQuotes();
-      await selectStock(state.selected);
-    }
-    return;
-  }
-
-  if (!button.dataset.groupId || button.dataset.groupId === state.activeGroupId) return;
-
-  state.activeGroupId = button.dataset.groupId;
-  state.creatingGroup = false;
-  state.renamingGroupId = null;
-  clearStockSearch();
-  state.selected = currentSymbols()[0] || null;
-  saveGroups();
-  renderWatchlist();
-
-  if (state.selected) {
-    await refreshQuotes();
-    await selectStock(state.selected);
-  } else {
-    renderSelectedQuote();
-  }
-});
-
-elements.groupTabs.addEventListener("pointerdown", (event) => {
-  if (isRealMode()) return;
-  const button = event.target.closest('button[data-action="show-group-input"]');
-  if (!button) return;
-  event.preventDefault();
-  showGroupInput();
-});
-
-elements.groupTabs.addEventListener("dblclick", (event) => {
-  if (isRealMode()) return;
-  const button = event.target.closest("button[data-group-id]");
-  if (!button) return;
-
-  state.creatingGroup = false;
-  state.renamingGroupId = button.dataset.groupId;
-  renderGroups();
-  elements.groupTabs.querySelector(".rename-group-tab input")?.focus();
-  elements.groupTabs.querySelector(".rename-group-tab input")?.select();
-});
-
-elements.groupTabs.addEventListener("submit", async (event) => {
-  if (isRealMode()) return;
-  const renameForm = event.target.closest(".rename-group-tab");
-  if (renameForm) {
-    event.preventDefault();
-    saveRenamedGroup(renameForm);
-    return;
-  }
-
-  const form = event.target.closest(".add-group-tab");
-  if (!form) return;
-
-  event.preventDefault();
-  const input = form.querySelector("#group-name");
-  const name = input.value.trim().slice(0, 18);
-
-  if (!name) {
-    state.creatingGroup = false;
-    renderGroups();
-    return;
-  }
-
-  const id = `group-${Date.now().toString(36)}`;
-  state.groups.push({ id, name, symbols: [], portfolio: {}, alerts: {} });
-  state.activeGroupId = id;
-  state.creatingGroup = false;
-  state.renamingGroupId = null;
-  clearStockSearch();
-  state.selected = null;
-  saveGroups();
-  renderWatchlist();
-  renderSelectedQuote();
-});
-
-elements.groupTabs.addEventListener("focusout", (event) => {
-  if (isRealMode()) return;
-  const addForm = event.target.closest(".add-group-tab");
-  if (addForm) {
-    window.setTimeout(() => {
-      const stillInsideForm = addForm.contains(document.activeElement);
-      const name = addForm.querySelector("#group-name")?.value.trim();
-      if (!stillInsideForm && state.creatingGroup && !name) {
-        state.creatingGroup = false;
-        renderGroups();
-      }
-    }, 0);
-    return;
-  }
-
-  const form = event.target.closest(".rename-group-tab");
-  if (!form || !state.renamingGroupId) return;
-  window.setTimeout(() => {
-    if (state.renamingGroupId === form.dataset.groupId) {
-      saveRenamedGroup(form);
-    }
-  }, 0);
-});
-
-elements.refresh.addEventListener("click", () => refreshQuotes());
-
-elements.portfolioExport.addEventListener("click", exportCurrentPortfolio);
-
-elements.backToCards.addEventListener("click", () => {
-  navigateMain("cards");
-});
-
-elements.backToWatchlist.addEventListener("click", () => {
-  state.mobileDetailOpen = false;
-  renderSectionVisibility();
-  renderMobileNav();
-  window.scrollTo({ top: 0, behavior: "smooth" });
-});
-
-elements.backFromHistory.addEventListener("click", () => {
-  navigateMain("cards");
-});
-
-elements.backFromSettings.addEventListener("click", () => {
-  navigateMain("cards");
-});
-
-elements.refreshHistoryPage.addEventListener("click", () => {
-  renderTradeHistoryPanels();
-  syncPaperAccount({ quiet: false });
-});
-
-function applyComparisonControls() {
-  const unit = VALID_CUSTOM_UNITS.has(elements.comparisonUnit.value) ? elements.comparisonUnit.value : "days";
-  const maxByUnit = { hours: 168, days: 365, months: 60 };
-  const amount = Math.min(
-    Math.max(Number.parseInt(elements.comparisonAmount.value, 10) || 4, 1),
-    maxByUnit[unit]
-  );
-  const periodChanged = amount !== state.comparisonAmount || unit !== state.comparisonUnit;
-
-  state.comparisonAmount = amount;
-  state.comparisonUnit = unit;
-  state.comparisonSort = elements.comparisonSort.value;
-  state.comparisonSortDirection = "desc";
-  localStorage.setItem("stock-dashboard-comparison-amount", String(amount));
-  localStorage.setItem("stock-dashboard-comparison-unit", unit);
-  localStorage.setItem("stock-dashboard-comparison-sort", state.comparisonSort);
-  localStorage.setItem("stock-dashboard-comparison-sort-direction", state.comparisonSortDirection);
-
-  if (periodChanged) state.performance.clear();
-  renderComparisonTable();
-  if (periodChanged) refreshPerformance();
-}
-
-elements.comparisonControls.addEventListener("change", applyComparisonControls);
-
-elements.comparisonControls.addEventListener("submit", (event) => {
-  event.preventDefault();
-  applyComparisonControls();
-});
-
-elements.comparisonRefresh.addEventListener("click", () => {
-  state.performance.clear();
-  refreshPerformance();
-});
-
-elements.settingsOverview.addEventListener("click", (event) => {
-  if (event.target.closest("#reset-paper-account")) {
-    resetPaperAccount();
-  }
-});
-
-elements.apiKeyCreate.addEventListener("click", async () => {
-  if (!state.session?.access_token) return;
-  if (!state.paperApiKeysEnabled) {
-    setApiKeyMessage("Add SUPABASE_SERVICE_ROLE_KEY on the server to enable Claude paper API keys.", "error");
-    return;
-  }
-  elements.apiKeyCreate.disabled = true;
-  setApiKeyMessage("Generating paper API key...");
-  try {
-    const data = await postJson("/api/keys/create", { name: "Claude paper key" }, { auth: true });
-    elements.apiKeySecret.hidden = false;
-    elements.apiKeySecret.innerHTML = `
-      <strong>Copy this secret now. It will not be shown again.</strong>
-      <span>Endpoint</span>
-      <code>${escapeHtml(data.credentials.endpoint)}</code>
-      <span>Key</span>
-      <code>${escapeHtml(data.credentials.key)}</code>
-      <span>Secret</span>
-      <code>${escapeHtml(data.credentials.secret)}</code>
-      <span>Claude can call <code>/api/paper/account</code> and <code>/api/paper/trade</code> with headers <code>X-Poshkan-Key</code> and <code>X-Poshkan-Secret</code>.</span>
-    `;
-    setApiKeyMessage("Paper API key generated.", "success");
-    await loadApiKeys();
-  } catch (error) {
-    setApiKeyMessage(error.message, "error");
-  } finally {
-    elements.apiKeyCreate.disabled = false;
-  }
-});
-
-elements.apiKeyList.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-api-key-revoke]");
-  if (!button || !state.session?.access_token) return;
-  setApiKeyMessage("Revoking key...");
-  try {
-    await postJson("/api/keys/revoke", { id: button.dataset.apiKeyRevoke }, { auth: true });
-    setApiKeyMessage("Paper API key revoked.", "success");
-    elements.apiKeySecret.hidden = true;
-    await loadApiKeys();
-  } catch (error) {
-    setApiKeyMessage(error.message, "error");
-  }
-});
-
-elements.toggleDetails.addEventListener("click", () => setDetailsPanelVisibility(!state.showDetailsPanel));
-
-async function handleTradeHistoryClick(event) {
-  const clearHistoryButton = event.target.closest("[data-action='clear-paper-history'], [data-action='clear-real-history']");
-  if (!clearHistoryButton) return false;
-
-  clearHistoryButton.disabled = true;
-  try {
-    await clearTradeHistory(clearHistoryButton.dataset.action);
-  } catch (error) {
-    elements.marketStatus.textContent = `Could not clear history: ${error.message}`;
-    clearHistoryButton.disabled = false;
-  }
-  return true;
-}
-
-elements.watchlist.addEventListener("click", async (event) => {
-  if (await handleTradeHistoryClick(event)) return;
-  const keepSelection = event.target.closest(
-    ".stock-card, form, .panel-title, .group-tabs, .trade-history, .stock-search"
-  );
-  if (!keepSelection) {
-    clearSelectedCard();
-  }
-});
-
-elements.historyPage.addEventListener("click", (event) => {
-  handleTradeHistoryClick(event);
-});
-
-elements.stockSearch.addEventListener("input", () => {
-  state.stockSearch = elements.stockSearch.value;
-  renderWatchlist();
-});
-
-elements.alertTray.addEventListener("click", async (event) => {
-  const undoButton = event.target.closest("button[data-undo-remove]");
-  if (undoButton) {
-    await restoreRemovedStock(undoButton.dataset.undoRemove);
-    return;
-  }
-
-  const button = event.target.closest("button[data-alert-dismiss]");
-  if (!button) return;
-
-  const key = button.dataset.alertDismiss;
-  state.alertEvents = state.alertEvents.filter((item) => item.key !== key);
-  renderAlertTray();
-});
-
-async function handleSelectedStockActionClick(event) {
-  const button = event.target.closest("button");
-  if (!button) return false;
-
-  if (button.dataset.tradeAction) {
-    if (isRealMode()) return true;
-    const symbol = cleanSymbol(button.dataset.symbol);
-    const actionRoot = button.closest(".selected-actions, .stock-card");
-    const qty = actionRoot?.querySelector("input[data-trade-qty]")?.value;
-    executeTrade(symbol, button.dataset.tradeAction, qty);
-    return true;
-  }
-
-  if (button.dataset.realTradeAction) {
-    const symbol = cleanSymbol(button.dataset.symbol);
-    const actionRoot = button.closest(".selected-actions, .stock-card");
-    const qty = actionRoot?.querySelector("input[data-real-trade-qty]")?.value;
-    const price = actionRoot?.querySelector("input[data-real-trade-price]")?.value;
-    await executeRealTrade(symbol, button.dataset.realTradeAction, qty, price);
-    return true;
-  }
-
-  if (button.dataset.realAction === "save") {
-    const symbol = cleanSymbol(button.dataset.symbol);
-    const actionRoot = button.closest(".selected-actions, .stock-card");
-    const shares = actionRoot?.querySelector('[data-real-field="shares"]')?.value;
-    const avgCost = actionRoot?.querySelector('[data-real-field="avgCost"]')?.value;
-    await addOrUpdateRealPosition(symbol, shares, avgCost);
-    return true;
-  }
-
-  return false;
-}
-
-elements.selectedPosition.addEventListener("click", async (event) => {
-  await handleSelectedStockActionClick(event);
-});
-
-elements.stockList.addEventListener("click", async (event) => {
-  if (state.draggingSymbol) return;
-  if (await handleSelectedStockActionClick(event)) return;
-  const button = event.target.closest("button");
-  if (!button) return;
-
-  const symbol = button.dataset.symbol;
-  if (button.dataset.action === "remove") {
-    if (isRealMode()) {
-      const snapshot = {
-        mode: "real",
-        symbol,
-        realTab: state.activeRealTab,
-        quote: state.quotes.get(symbol) || null
-      };
-      if (isRealOwnedTab()) {
-        snapshot.position = state.realPositions[symbol] ? { ...state.realPositions[symbol] } : null;
-        state.removedRealSymbols.add(symbol);
-        delete state.realPositions[symbol];
-        state.realPortfolioTouched = true;
-      } else {
-        snapshot.watchlist = true;
-        snapshot.index = Math.max(0, state.realWatchlist.indexOf(symbol));
-        state.removedRealSymbols.add(symbol);
-        state.realWatchlist = state.realWatchlist.filter((item) => item !== symbol);
-      }
-      state.quotes.delete(symbol);
-      state.selected = currentSymbols()[0] || null;
-      saveGroups();
-      renderWatchlist();
-      renderSelectedQuote();
-      if (state.selected) await selectStock(state.selected);
-      if (state.cloudReady) await saveCloudData({ force: true });
-      addUndoRemoveEvent(snapshot);
-      return;
-    }
-    const group = activeGroup();
-    const snapshot = {
-      mode: "paper",
-      symbol,
-      groupId: group.id,
-      index: Math.max(0, group.symbols.indexOf(symbol)),
-      portfolio: group.portfolio?.[symbol] ? { ...group.portfolio[symbol] } : null,
-      alert: group.alerts?.[symbol] ? { ...group.alerts[symbol] } : null,
-      quote: state.quotes.get(symbol) || null
-    };
-    group.symbols = group.symbols.filter((item) => item !== symbol);
-    delete group.portfolio?.[symbol];
-    delete group.alerts?.[symbol];
-    state.quotes.delete(symbol);
-    state.selected = group.symbols[0] || null;
-    saveGroups();
-    renderWatchlist();
-    renderSelectedQuote();
-    if (state.selected) await selectStock(state.selected);
-    addUndoRemoveEvent(snapshot);
-    return;
-  }
-
-  if (button.dataset.action === "select") {
-    await selectStock(symbol);
-  }
-});
-
-elements.comparisonTable.addEventListener("click", async (event) => {
-  const sortButton = event.target.closest("button[data-sort-key]");
-  if (sortButton) {
-    const key = sortButton.dataset.sortKey;
-    if (state.comparisonSort === key) {
-      state.comparisonSortDirection = state.comparisonSortDirection === "desc" ? "asc" : "desc";
-    } else {
-      state.comparisonSort = key;
-      state.comparisonSortDirection = "desc";
-    }
-    localStorage.setItem("stock-dashboard-comparison-sort", state.comparisonSort);
-    localStorage.setItem("stock-dashboard-comparison-sort-direction", state.comparisonSortDirection);
-    renderComparisonTable();
-    return;
-  }
-
-  const button = event.target.closest("button[data-action='select']");
-  if (!button) return;
-  state.comparisonPageOpen = false;
-  state.historyPageOpen = false;
-  state.settingsPageOpen = false;
-  renderComparisonPageVisibility();
-  await selectStock(cleanSymbol(button.dataset.symbol));
-});
-
-elements.stockList.addEventListener("dragstart", (event) => {
-  if (isRealMode()) {
-    event.preventDefault();
-    return;
-  }
-  const card = event.target.closest(".stock-card");
-  if (!card || event.target.closest("input, select, label")) {
-    event.preventDefault();
-    return;
-  }
-
-  state.draggingSymbol = cleanSymbol(card.dataset.symbol);
-  card.classList.add("dragging");
-  event.dataTransfer.effectAllowed = "move";
-  event.dataTransfer.setData("text/plain", state.draggingSymbol);
-});
-
-elements.stockList.addEventListener("dragover", (event) => {
-  if (!state.draggingSymbol) return;
-  event.preventDefault();
-  const draggingCard = elements.stockList.querySelector(".stock-card.dragging");
-  if (!draggingCard) return;
-
-  const afterCard = getDragAfterCard(elements.stockList, event.clientX, event.clientY);
-  if (afterCard) {
-    elements.stockList.insertBefore(draggingCard, afterCard);
-  } else {
-    elements.stockList.appendChild(draggingCard);
-  }
-});
-
-elements.stockList.addEventListener("drop", (event) => {
-  if (!state.draggingSymbol) return;
-  event.preventDefault();
-  saveDraggedCardOrder();
-});
-
-elements.stockList.addEventListener("dragend", () => {
-  const draggingCard = elements.stockList.querySelector(".stock-card.dragging");
-  draggingCard?.classList.remove("dragging");
-  state.draggingSymbol = null;
-});
-
-function handleAlertFieldChange(event) {
-  const alertInput = event.target.closest("[data-alert-field]");
-  if (!alertInput) return false;
-
-  const symbol = cleanSymbol(alertInput.dataset.symbol);
-  const field = alertInput.dataset.alertField;
-  if (!symbol || !["active", "direction", "target"].includes(field)) return false;
-
-  const alert = alertFor(symbol);
-  if (field === "active") {
-    alert.active = alertInput.checked;
-  } else if (field === "direction") {
-    alert.direction = ALERT_DIRECTIONS.has(alertInput.value) ? alertInput.value : "above";
-  } else {
-    alert.target = Math.max(0, Number(alertInput.value) || 0);
-  }
-
-  state.firedAlerts.delete(alertKey(activeGroup().id, symbol, alert));
-  saveGroups();
-  evaluateAlerts([state.quotes.get(symbol)].filter(Boolean));
-  renderWatchlist();
-  renderSelectedQuote();
-  return true;
-}
-
-elements.selectedPosition.addEventListener("change", (event) => {
-  handleAlertFieldChange(event);
-});
-
-elements.stockList.addEventListener("change", (event) => {
-  handleAlertFieldChange(event);
-});
-
-elements.periodButtons.forEach((button) => {
-  button.addEventListener("click", async () => {
-    const nextPeriod = button.dataset.period;
-    if (!nextPeriod || nextPeriod === state.chartPeriod) return;
-
-    state.chartPeriod = nextPeriod;
-    localStorage.setItem("stock-dashboard-chart-period", nextPeriod);
-    renderPeriodButtons();
-    if (state.selected) {
-      await refreshHistory(state.selected);
-    }
-  });
-});
-
-elements.customPeriodForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  const unit = VALID_CUSTOM_UNITS.has(elements.customPeriodUnit.value)
-    ? elements.customPeriodUnit.value
-    : "days";
-  const maxByUnit = { hours: 168, days: 365, months: 60 };
-  const amount = Math.min(
-    Math.max(Number.parseInt(elements.customPeriodAmount.value, 10) || 1, 1),
-    maxByUnit[unit]
-  );
-
-  state.chartPeriod = "custom";
-  state.customAmount = amount;
-  state.customUnit = unit;
-  localStorage.setItem("stock-dashboard-chart-period", "custom");
-  localStorage.setItem("stock-dashboard-custom-amount", String(amount));
-  localStorage.setItem("stock-dashboard-custom-unit", unit);
-  renderPeriodButtons();
-
-  if (state.selected) {
-    await refreshHistory(state.selected);
-  }
-});
-
-elements.chartModeButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    const mode = button.dataset.chartMode;
-    if (!["line", "candles"].includes(mode) || mode === state.chartMode) return;
-
-    state.chartMode = mode;
-    localStorage.setItem("stock-dashboard-chart-mode", mode);
-    renderChartControls();
-    renderChart();
+    state.authMode = button.dataset.authMode;
+    elements.authModeButtons.forEach((item) => item.classList.toggle("active", item === button));
+    elements.signupFields.hidden = state.authMode !== "signup";
+    elements.authTitle.textContent = state.authMode === "signup" ? "Create account" : "Sign in";
+    elements.authSubmit.textContent = state.authMode === "signup" ? "Create account" : "Sign in";
   });
 });
 
-elements.showMA.addEventListener("change", () => {
-  state.showMA = elements.showMA.checked;
-  localStorage.setItem("stock-dashboard-show-ma", String(state.showMA));
-  renderChart();
+elements.authForm.addEventListener("submit", handleAuth);
+elements.signOut.addEventListener("click", signOut);
+elements.settingsButton.addEventListener("click", async () => {
+  state.page = "settings";
+  await loadApiKeys();
+  render();
 });
 
-elements.showVolume.addEventListener("change", () => {
-  state.showVolume = elements.showVolume.checked;
-  localStorage.setItem("stock-dashboard-show-volume", String(state.showVolume));
-  renderChart();
-});
-
-elements.chart.addEventListener("mousemove", (event) => {
-  if (state.chartPoints.length < 2) return;
-
-  const rect = elements.chart.getBoundingClientRect();
-  const ratio = elements.chart.width / rect.width;
-  const x = (event.clientX - rect.left) * ratio;
-  const y = (event.clientY - rect.top) * ratio;
-  const width = elements.chart.width;
-  const height = elements.chart.height;
-  const plotLeft = Math.max(70, width * 0.08);
-  const plotRight = width - Math.max(18, width * 0.018);
-  const plotTop = Math.max(22, height * 0.07);
-  const plotBottom = height - Math.max(48, height * 0.15);
-
-  if (x < plotLeft || x > plotRight || y < plotTop || y > plotBottom) {
-    if (state.chartHoverIndex !== null) {
-      state.chartHoverIndex = null;
-      renderChart();
-    }
+document.addEventListener("click", async (event) => {
+  const nav = event.target.closest("[data-nav]");
+  if (nav) {
+    const target = nav.dataset.nav;
+    if (target === "portfolios") state.page = "portfolios";
+    else state.page = target;
+    if (target === "compare") await loadPerformance().catch((error) => setStatus(error.message, "warning"));
+    if (target === "ai" || target === "settings") await loadApiKeys();
+    render();
     return;
   }
 
-  const nextIndex = Math.round(((x - plotLeft) / (plotRight - plotLeft)) * (state.chartPoints.length - 1));
-  const clampedIndex = Math.max(0, Math.min(state.chartPoints.length - 1, nextIndex));
-
-  if (state.chartHoverIndex !== clampedIndex) {
-    state.chartHoverIndex = clampedIndex;
-    renderChart();
+  const action = event.target.closest("[data-action]");
+  if (!action) return;
+  const act = action.dataset.action;
+  try {
+    if (act === "new-portfolio") elements.dialog.showModal();
+    if (act === "open-portfolio") selectPortfolio(action.dataset.id);
+    if (act === "archive-portfolio") await archivePortfolio(action.dataset.id);
+    if (act === "open-stock") await loadStockDetail(action.dataset.symbol);
+    if (act === "watch-asset") {
+      const asset = state.searchResults.find((item) => item.symbol === action.dataset.symbol) || { symbol: action.dataset.symbol };
+      await addToWatchlist(asset);
+    }
+    if (act === "trade-asset") {
+      state.selectedSymbol = action.dataset.symbol;
+      state.page = "stock";
+      state.stockTab = "trade";
+      await loadQuotes([state.selectedSymbol]);
+      render();
+    }
+    if (act === "remove-watch") await deleteWatchlistSymbol(action.dataset.symbol);
+    if (act === "back-to-portfolio") {
+      state.page = "portfolio";
+      render();
+    }
+    if (act === "refresh-performance") {
+      await loadPerformance();
+      render();
+    }
+    if (act === "load-api-keys") {
+      await loadApiKeys();
+      render();
+    }
+    if (act === "create-api-key") await createApiKey();
+    if (act === "revoke-api-key") await revokeApiKey(action.dataset.id);
+    if (act === "export-portfolio") exportPortfolio();
+  } catch (error) {
+    setStatus(error.message, "warning");
   }
 });
 
-elements.chart.addEventListener("mouseleave", () => {
-  if (state.chartHoverIndex !== null) {
-    state.chartHoverIndex = null;
-    renderChart();
+document.addEventListener("submit", async (event) => {
+  const searchForm = event.target.closest("#asset-search-form");
+  const tradeForm = event.target.closest(".trade-form");
+  const startingForm = event.target.closest(".starting-form");
+  if (!searchForm && !tradeForm && !startingForm) return;
+  event.preventDefault();
+  try {
+    if (searchForm) {
+      await searchAssets(searchForm.querySelector("input").value);
+    }
+    if (tradeForm) {
+      const side = tradeForm.querySelector("[data-side].active")?.dataset.side || "buy";
+      await executeTrade(tradeForm.dataset.symbol, side, tradeForm.elements.quantity.value);
+    }
+    if (startingForm) {
+      await setStartingHolding(startingForm.dataset.symbol, startingForm.elements.quantity.value, startingForm.elements.avgCost.value);
+    }
+  } catch (error) {
+    setStatus(error.message, "warning");
   }
 });
 
-window.addEventListener("resize", () => {
-  if (state.selected) refreshHistory(state.selected);
+document.addEventListener("click", (event) => {
+  const side = event.target.closest("[data-side]");
+  if (side) {
+    const form = side.closest(".trade-form");
+    form.querySelectorAll("[data-side]").forEach((button) => button.classList.toggle("active", button === side));
+  }
+  const tab = event.target.closest("[data-portfolio-tab]");
+  if (tab) {
+    state.portfolioTab = tab.dataset.portfolioTab;
+    render();
+  }
+  const stockTab = event.target.closest("[data-stock-tab]");
+  if (stockTab) {
+    state.stockTab = stockTab.dataset.stockTab;
+    if (state.stockTab === "chart") loadChart().then(render);
+    else render();
+  }
+  const period = event.target.closest("[data-period]");
+  if (period) {
+    state.chartPeriod = period.dataset.period;
+    loadChart().then(render).catch((error) => setStatus(error.message, "warning"));
+  }
+  const popular = event.target.closest("[data-search-symbol]");
+  if (popular) {
+    searchAssets(popular.dataset.searchSymbol).catch((error) => setStatus(error.message, "warning"));
+  }
 });
 
-renderPeriodButtons();
-renderChartControls();
-renderSectionVisibility();
-renderComparisonPageVisibility();
-state.selected = currentSymbols()[0] || null;
-renderPortfolioMode();
-setAuthMode("signin");
+document.addEventListener("change", async (event) => {
+  if (event.target.id === "portfolio-switcher") {
+    selectPortfolio(event.target.value);
+  }
+  const aiField = event.target.dataset.aiField;
+  if (aiField) {
+    const value = event.target.type === "checkbox" ? event.target.checked : Number(event.target.value);
+    await updateAiSetting(event.target.dataset.id, { [aiField]: value }).catch((error) => setStatus(error.message, "warning"));
+  }
+});
 
-initializeAuth();
+document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-close-dialog]")) elements.dialog.close();
+});
 
-state.timer = window.setInterval(() => {
-  if (state.session) refreshQuotes({ quiet: true });
-}, state.refreshMs);
+elements.portfolioForm.addEventListener("submit", (event) => {
+  createPortfolio(event).catch((error) => setStatus(error.message, "warning"));
+});
 
-state.paperTimer = window.setInterval(() => {
-  if (state.session) syncPaperAccount({ quiet: true });
-}, state.paperSyncMs);
+boot();
