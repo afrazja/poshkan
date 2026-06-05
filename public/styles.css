@@ -644,6 +644,35 @@ button:active {
   line-height: 1.45;
 }
 
+.portfolio-home-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.portfolio-home-actions button {
+  border: 1px solid rgba(var(--mode-accent-rgb), 0.34);
+  border-radius: 8px;
+  background: rgba(var(--mode-accent-rgb), 0.13);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 850;
+  min-height: 38px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.portfolio-home-actions button:hover {
+  border-color: rgba(var(--mode-accent-rgb), 0.62);
+  background: rgba(var(--mode-accent-rgb), 0.2);
+}
+
+.portfolio-home-actions button[hidden] {
+  display: none;
+}
+
 .page-watchlist .account-summary,
 .page-watchlist .portfolio-health,
 .subpage-open .portfolio-home-head,
@@ -2867,6 +2896,11 @@ h2 {
 
   .portfolio-home-head span {
     font-size: 0.8rem;
+  }
+
+  .portfolio-home-actions,
+  .portfolio-home-actions button {
+    width: 100%;
   }
 
   .account-summary .summary-card.primary {

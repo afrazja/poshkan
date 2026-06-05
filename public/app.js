@@ -130,6 +130,7 @@ const elements = {
   historyPageKicker: document.querySelector("#history-page-kicker"),
   historyPageTitle: document.querySelector("#history-page-title"),
   historyPageDescription: document.querySelector("#history-page-description"),
+  portfolioExport: document.querySelector("#export-portfolio"),
   comparisonControls: document.querySelector("#comparison-controls"),
   comparisonAmount: document.querySelector("#comparison-amount"),
   comparisonUnit: document.querySelector("#comparison-unit"),
@@ -563,10 +564,19 @@ function positionFor(symbol) {
   if (isRealMode()) {
     return state.realPositions[symbol] || { shares: 0, avgCost: 0 };
   }
+  if (isPortfolioPage()) {
+    return paperPositionFor(symbol);
+  }
   const group = activeGroup();
   group.portfolio ||= {};
   group.portfolio[symbol] ||= { shares: 0, avgCost: 0 };
   return group.portfolio[symbol];
+}
+
+function paperPositionFor(symbol) {
+  const cleaned = cleanSymbol(symbol);
+  const group = state.groups.find((item) => Number(item.portfolio?.[cleaned]?.shares) > 0);
+  return group?.portfolio?.[cleaned] || { shares: 0, avgCost: 0 };
 }
 
 function alertFor(symbol) {
@@ -588,6 +598,114 @@ function positionStats(symbol) {
   const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
 
   return { shares, avgCost, value, cost, pnl, pnlPercent };
+}
+
+function escapeXml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function excelCell(value, type = "String") {
+  const safeType = type === "Number" || type === "DateTime" ? type : "String";
+  const safeValue =
+    safeType === "Number" ? (value !== "" && Number.isFinite(Number(value)) ? Number(value) : "") : escapeXml(value);
+  return `<Cell><Data ss:Type="${safeType}">${safeValue}</Data></Cell>`;
+}
+
+function portfolioExportRows() {
+  return currentSymbols()
+    .map((symbol) => {
+      const quote = state.quotes.get(symbol);
+      const stats = positionStats(symbol);
+      if (stats.shares <= 0) return null;
+      const price = Number(quote?.regularMarketPrice);
+      return {
+        symbol,
+        name: quote?.shortName || quote?.longName || symbol,
+        shares: stats.shares,
+        avgCost: stats.avgCost,
+        price: Number.isFinite(price) ? price : "",
+        cost: stats.cost,
+        value: stats.value,
+        pnl: stats.pnl,
+        pnlPercent: stats.pnlPercent,
+        dayChangePercent: Number.isFinite(Number(quote?.regularMarketChangePercent))
+          ? Number(quote.regularMarketChangePercent)
+          : "",
+        mode: isRealMode() ? "Real Portfolio" : "Paper Portfolio",
+        exportedAt: new Date().toLocaleString()
+      };
+    })
+    .filter(Boolean);
+}
+
+function exportCurrentPortfolio() {
+  const rows = portfolioExportRows();
+  if (!rows.length) {
+    elements.marketStatus.textContent = "No owned positions to export yet.";
+    return;
+  }
+
+  const headers = [
+    "Symbol",
+    "Name",
+    "Shares",
+    "Average Cost",
+    "Current Price",
+    "Cost Basis",
+    "Market Value",
+    "Unrealized P/L",
+    "Unrealized P/L %",
+    "Day Change %",
+    "Mode",
+    "Exported At"
+  ];
+  const body = rows
+    .map(
+      (row) => `<Row>
+        ${excelCell(row.symbol)}
+        ${excelCell(row.name)}
+        ${excelCell(row.shares, "Number")}
+        ${excelCell(row.avgCost, "Number")}
+        ${excelCell(row.price, "Number")}
+        ${excelCell(row.cost, "Number")}
+        ${excelCell(row.value, "Number")}
+        ${excelCell(row.pnl, "Number")}
+        ${excelCell(row.pnlPercent, "Number")}
+        ${excelCell(row.dayChangePercent, "Number")}
+        ${excelCell(row.mode)}
+        ${excelCell(row.exportedAt)}
+      </Row>`
+    )
+    .join("");
+  const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="Portfolio">
+    <Table>
+      <Row>${headers.map((header) => excelCell(header)).join("")}</Row>
+      ${body}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `poshkan-${isRealMode() ? "real" : "paper"}-portfolio-${date}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  elements.marketStatus.textContent = `Exported ${rows.length} portfolio position${rows.length === 1 ? "" : "s"} to Excel.`;
 }
 
 function positionOpenedAt(symbol) {
@@ -2623,6 +2741,7 @@ function renderPortfolioMode() {
   elements.realPositionForm.hidden = !realOwned || watchlistPage;
   elements.groupTabs.hidden = portfolioPage;
   elements.groupLabel.hidden = portfolioPage;
+  elements.portfolioExport.hidden = !portfolioPage;
   elements.groupLabel.textContent = realMode ? "Real watchlist" : "Paper groups";
   elements.input.placeholder = realWatchlist ? "TSLA" : "AAPL";
   elements.watchlistAddTitle.textContent = isRealOwnedTab()
@@ -3842,6 +3961,8 @@ elements.groupTabs.addEventListener("focusout", (event) => {
 });
 
 elements.refresh.addEventListener("click", () => refreshQuotes());
+
+elements.portfolioExport.addEventListener("click", exportCurrentPortfolio);
 
 elements.backToCards.addEventListener("click", () => {
   navigateMain("cards");
