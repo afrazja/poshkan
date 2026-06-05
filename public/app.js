@@ -70,6 +70,8 @@ const elements = {
   portfolioStartingHoldings: document.querySelector("#portfolio-starting-holdings")
 };
 
+const SIGNED_IN_PAGES = new Set(["portfolios", "portfolio", "stock", "compare", "history", "ai", "settings"]);
+
 const moneyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
 
@@ -125,6 +127,22 @@ function throwIfSupabaseError(result) {
 
 function activePortfolio() {
   return state.portfolios.find((portfolio) => portfolio.id === state.selectedPortfolioId) || state.portfolios[0] || null;
+}
+
+function defaultSignedInPage() {
+  return state.selectedPortfolioId ? "portfolio" : "portfolios";
+}
+
+function keepOrSetSignedInPage({ force = false } = {}) {
+  const hasPortfolio = Boolean(activePortfolio());
+  const invalidPage =
+    !SIGNED_IN_PAGES.has(state.page) ||
+    (state.page !== "portfolios" && !hasPortfolio) ||
+    (state.page === "stock" && !state.selectedSymbol);
+
+  if (force || invalidPage) {
+    state.page = defaultSignedInPage();
+  }
 }
 
 function portfolioHoldings(portfolioId = state.selectedPortfolioId) {
@@ -1235,13 +1253,16 @@ async function boot() {
     state.session = data.session;
     if (state.session) {
       await loadCloudData();
-      state.page = state.selectedPortfolioId ? "portfolio" : "portfolios";
+      keepOrSetSignedInPage({ force: true });
     }
     state.supabase.auth.onAuthStateChange(async (_event, session) => {
+      const wasSignedIn = Boolean(state.session);
       state.session = session;
       if (session) {
         await loadCloudData();
-        state.page = state.selectedPortfolioId ? "portfolio" : "portfolios";
+        keepOrSetSignedInPage({ force: !wasSignedIn });
+      } else {
+        state.page = "portfolios";
       }
       render();
     });
