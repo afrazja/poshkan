@@ -40,6 +40,7 @@ const state = {
   comparisonSort: localStorage.getItem("stock-dashboard-comparison-sort") || "performance",
   comparisonSortDirection: localStorage.getItem("stock-dashboard-comparison-sort-direction") === "asc" ? "asc" : "desc",
   comparisonLoading: false,
+  mainPage: "portfolio",
   comparisonPageOpen: false,
   historyPageOpen: false,
   settingsPageOpen: false,
@@ -325,6 +326,14 @@ function isRealWatchlistTab() {
   return isRealMode() && state.activeRealTab === "watchlist";
 }
 
+function isPortfolioPage() {
+  return state.mainPage === "portfolio";
+}
+
+function isWatchlistPage() {
+  return state.mainPage === "watchlist";
+}
+
 function mergeLocalRealPortfolio(localPositions = {}, localWatchlist = []) {
   let changed = false;
   const cloudPositions = state.realPositions || {};
@@ -422,8 +431,23 @@ function activeGroup() {
 }
 
 function currentSymbols() {
+  if (isPortfolioPage()) {
+    if (isRealMode()) {
+      return Object.keys(state.realPositions);
+    }
+    return [
+      ...new Set(
+        state.groups.flatMap((group) =>
+          Object.entries(group.portfolio || {})
+            .filter(([, position]) => Number(position?.shares) > 0)
+            .map(([symbol]) => cleanSymbol(symbol))
+        )
+      )
+    ].filter(Boolean);
+  }
+
   if (isRealMode()) {
-    return isRealOwnedTab() ? Object.keys(state.realPositions) : state.realWatchlist;
+    return state.realWatchlist;
   }
   return activeGroup()?.symbols || [];
 }
@@ -1957,7 +1981,11 @@ function renderSectionVisibility() {
 }
 
 function renderComparisonPageVisibility() {
+  const subpageOpen = state.comparisonPageOpen || state.historyPageOpen || state.settingsPageOpen;
   elements.workspace.hidden = state.comparisonPageOpen || state.historyPageOpen || state.settingsPageOpen;
+  elements.dashboardShell.classList.toggle("page-portfolio", isPortfolioPage());
+  elements.dashboardShell.classList.toggle("page-watchlist", isWatchlistPage());
+  elements.dashboardShell.classList.toggle("subpage-open", subpageOpen);
   elements.comparisonPage.hidden = !state.comparisonPageOpen;
   elements.historyPage.hidden = !state.historyPageOpen;
   elements.settingsPage.hidden = !state.settingsPageOpen;
@@ -1984,7 +2012,8 @@ function renderMobileNav() {
 
   const applyState = (button, target) => {
     const active =
-      (target === "cards" && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
+      (target === "cards" && isPortfolioPage() && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
+      (target === "watchlist" && isWatchlistPage() && !state.comparisonPageOpen && !state.historyPageOpen && !state.settingsPageOpen) ||
       (target === "table" && state.comparisonPageOpen) ||
       (target === "history" && state.historyPageOpen) ||
       (target === "settings" && state.settingsPageOpen);
@@ -2008,10 +2037,29 @@ function renderMobileNav() {
 
 function navigateMain(target, { scroll = false } = {}) {
   if (target === "cards") {
+    state.mainPage = "portfolio";
     state.comparisonPageOpen = false;
     state.historyPageOpen = false;
     state.settingsPageOpen = false;
     state.mobileDetailOpen = false;
+    state.activeRealTab = "owned";
+    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
+    clearStockSearch();
+    state.selected = null;
+    state.showDetailsPanel = false;
+    localStorage.setItem("stock-dashboard-show-details-panel", "false");
+  } else if (target === "watchlist") {
+    state.mainPage = "watchlist";
+    state.comparisonPageOpen = false;
+    state.historyPageOpen = false;
+    state.settingsPageOpen = false;
+    state.mobileDetailOpen = false;
+    state.activeRealTab = "watchlist";
+    localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
+    clearStockSearch();
+    state.selected = null;
+    state.showDetailsPanel = false;
+    localStorage.setItem("stock-dashboard-show-details-panel", "false");
   } else if (target === "table") {
     state.comparisonPageOpen = true;
     state.historyPageOpen = false;
@@ -2034,6 +2082,9 @@ function navigateMain(target, { scroll = false } = {}) {
     return;
   }
 
+  renderSectionVisibility();
+  renderWatchlist();
+  renderSelectedQuote();
   renderComparisonPageVisibility();
   if (target === "table") {
     refreshPerformance({ quiet: true });
@@ -2526,10 +2577,14 @@ function renderSettingsPage() {
 
 function renderPortfolioMode() {
   const realMode = isRealMode();
-  const realOwned = isRealOwnedTab();
-  const realWatchlist = isRealWatchlistTab();
+  const portfolioPage = isPortfolioPage();
+  const watchlistPage = isWatchlistPage();
+  const realOwned = realMode && portfolioPage;
+  const realWatchlist = realMode && watchlistPage;
   elements.dashboardShell.classList.toggle("mode-paper", !realMode);
   elements.dashboardShell.classList.toggle("mode-real", realMode);
+  elements.dashboardShell.classList.toggle("page-portfolio", portfolioPage);
+  elements.dashboardShell.classList.toggle("page-watchlist", watchlistPage);
   elements.portfolioModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.portfolioMode === state.portfolioMode);
   });
@@ -2547,29 +2602,39 @@ function renderPortfolioMode() {
     ? "Real Holdings"
     : realWatchlist
       ? "Real Watchlist"
-      : "Paper Portfolio";
+      : portfolioPage
+        ? "Paper Portfolio"
+        : "Paper Watchlist";
   elements.portfolioHomeCopy.textContent = realOwned
     ? "Track owned shares, average cost, market value, and unrealized profit without mixing it with paper trades."
     : realWatchlist
       ? "Follow real-market symbols separately from your owned positions."
-      : "Practice buying and selling with virtual cash while keeping your performance easy to scan.";
+      : portfolioPage
+        ? "Review only the paper positions you own, with cash and profit/loss kept separate from watchlist management."
+        : "Organize paper symbols into groups before opening a stock detail screen or making a practice trade.";
   elements.portfolioListTitle.textContent = realOwned
     ? "Owned Stocks"
     : realWatchlist
       ? "Watchlist Stocks"
-      : "Portfolio Stocks";
-  elements.form.hidden = realOwned;
-  elements.realPositionForm.hidden = !realOwned;
-  elements.groupTabs.hidden = false;
-  elements.groupLabel.hidden = false;
-  elements.groupLabel.textContent = realMode ? "Real portfolio" : "Paper groups";
-  elements.input.placeholder = isRealWatchlistTab() ? "TSLA" : "AAPL";
+      : portfolioPage
+        ? "Owned Paper Stocks"
+        : "Watchlist Stocks";
+  elements.form.hidden = portfolioPage || realOwned;
+  elements.realPositionForm.hidden = !realOwned || watchlistPage;
+  elements.groupTabs.hidden = portfolioPage;
+  elements.groupLabel.hidden = portfolioPage;
+  elements.groupLabel.textContent = realMode ? "Real watchlist" : "Paper groups";
+  elements.input.placeholder = realWatchlist ? "TSLA" : "AAPL";
   elements.watchlistAddTitle.textContent = isRealOwnedTab()
     ? "Add or update owned stock"
-    : isRealWatchlistTab()
+    : realWatchlist
       ? "Add stock to real watch list"
     : "Add stock to paper group";
-  elements.stockSearch.placeholder = realMode ? "Search real stocks" : "Search paper stocks";
+  elements.stockSearch.placeholder = portfolioPage
+    ? "Search owned stocks"
+    : realMode
+      ? "Search real watchlist"
+      : "Search paper watchlist";
   renderMobileNav();
 }
 
@@ -2714,11 +2779,13 @@ function renderWatchlist() {
 
   if (!symbols.length) {
     elements.stockList.innerHTML = `<div class="empty-state">${
-      isRealMode()
-        ? isRealOwnedTab()
-          ? "Add your first real holding with shares and average cost."
-          : "Add your first real watchlist stock."
-        : `Add a ticker symbol to ${escapeHtml(group.name)}.`
+      isPortfolioPage()
+        ? isRealMode()
+          ? "No owned real holdings yet. Add real holdings from the Portfolio form or buy from a stock detail screen."
+          : "No paper positions yet. Open Watchlist, choose a stock, then make a practice buy."
+        : isRealMode()
+          ? "Add your first real watchlist stock."
+          : `Add a ticker symbol to ${escapeHtml(group.name)}.`
     }</div>`;
     return;
   }
@@ -3371,6 +3438,7 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
     });
     state.realWatchlist = state.realWatchlist.filter((item) => item !== resolvedSymbol);
     state.activeRealTab = "owned";
+    state.mainPage = "portfolio";
     localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
     elements.marketStatus.textContent = `Bought ${qty} real ${resolvedSymbol} at ${moneyAxis(price)}`;
   } else {
@@ -3416,6 +3484,8 @@ async function executeRealTrade(symbol, action, quantity, tradePrice) {
 
 function setPortfolioMode(mode) {
   state.portfolioMode = mode === "real" ? "real" : "paper";
+  state.activeRealTab = isWatchlistPage() ? "watchlist" : "owned";
+  localStorage.setItem(REAL_ACTIVE_TAB_KEY, state.activeRealTab);
   state.comparisonPageOpen = false;
   state.historyPageOpen = false;
   state.settingsPageOpen = false;
@@ -3435,6 +3505,7 @@ function setPortfolioMode(mode) {
 
 function setRealTab(tab) {
   state.activeRealTab = tab === "watchlist" ? "watchlist" : "owned";
+  state.mainPage = state.activeRealTab === "watchlist" ? "watchlist" : "portfolio";
   clearStockSearch();
   state.selected = currentSymbols()[0] || null;
   state.performance.clear();
