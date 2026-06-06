@@ -1084,7 +1084,16 @@ function renderTradePanel(symbol, holding, stats, full = false) {
   `;
 }
 
-function drawChart() {
+function formatChartTime(timestamp) {
+  const date = new Date(Number(timestamp) * 1000);
+  const options =
+    state.chartPeriod === "1d" || state.chartPeriod === "5d"
+      ? { hour: "numeric", minute: "2-digit" }
+      : { month: "short", day: "numeric" };
+  return date.toLocaleString(undefined, options);
+}
+
+function drawChart(hoverIndex = null) {
   const canvas = document.querySelector("#stock-chart");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -1098,6 +1107,8 @@ function drawChart() {
   ctx.fillStyle = "#101418";
   ctx.fillRect(0, 0, width, height);
   const points = state.chartPoints.filter((point) => Number.isFinite(Number(point.close || point.price)));
+  canvas.onmousemove = null;
+  canvas.onmouseleave = null;
   if (points.length < 2) {
     ctx.fillStyle = "#9aa8af";
     ctx.font = `${16 * dpr}px system-ui`;
@@ -1105,12 +1116,82 @@ function drawChart() {
     return;
   }
   const prices = points.map((point) => Number(point.close || point.price));
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const pad = 28 * dpr;
-  const xFor = (index) => pad + (index / (points.length - 1)) * (width - pad * 2);
-  const yFor = (price) => height - pad - ((price - min) / Math.max(1, max - min)) * (height - pad * 2);
+  const rawMin = Math.min(...prices);
+  const rawMax = Math.max(...prices);
+  const priceRange = Math.max(0.01, rawMax - rawMin);
+  const min = rawMin - priceRange * 0.08;
+  const max = rawMax + priceRange * 0.08;
+  const margin = {
+    top: 34 * dpr,
+    right: 76 * dpr,
+    bottom: 48 * dpr,
+    left: 18 * dpr
+  };
+  const plotLeft = margin.left;
+  const plotRight = width - margin.right;
+  const plotTop = margin.top;
+  const plotBottom = height - margin.bottom;
+  const plotWidth = plotRight - plotLeft;
+  const plotHeight = plotBottom - plotTop;
+  const xFor = (index) => plotLeft + (index / (points.length - 1)) * plotWidth;
+  const yFor = (price) => plotBottom - ((price - min) / Math.max(0.01, max - min)) * plotHeight;
+  const start = prices[0];
+  const latest = prices[prices.length - 1];
+  const isUp = latest >= start;
+  const lineColor = isUp ? "#58d68d" : "#ff6b6b";
+  const gridColor = "rgba(238, 243, 245, 0.085)";
+  const labelColor = "#9aa8af";
+
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1 * dpr;
+  ctx.fillStyle = labelColor;
+  ctx.font = `${11 * dpr}px system-ui`;
+  ctx.textBaseline = "middle";
+  ctx.fillText("Price", plotRight + 10 * dpr, plotTop - 14 * dpr);
+  for (let step = 0; step <= 4; step += 1) {
+    const ratio = step / 4;
+    const y = plotTop + ratio * plotHeight;
+    const price = max - ratio * (max - min);
+    ctx.beginPath();
+    ctx.moveTo(plotLeft, y);
+    ctx.lineTo(plotRight, y);
+    ctx.stroke();
+    ctx.fillText(money(price), plotRight + 10 * dpr, y);
+  }
+
+  ctx.textBaseline = "top";
+  const xTicks = 4;
+  for (let step = 0; step <= xTicks; step += 1) {
+    const index = Math.min(points.length - 1, Math.round((step / xTicks) * (points.length - 1)));
+    const x = xFor(index);
+    ctx.beginPath();
+    ctx.moveTo(x, plotTop);
+    ctx.lineTo(x, plotBottom);
+    ctx.stroke();
+    const label = formatChartTime(points[index].time);
+    const textWidth = ctx.measureText(label).width;
+    ctx.fillText(label, Math.min(Math.max(plotLeft, x - textWidth / 2), plotRight - textWidth), plotBottom + 14 * dpr);
+  }
+  ctx.fillText("Time", plotRight - 24 * dpr, plotBottom + 32 * dpr);
+
+  const gradient = ctx.createLinearGradient(0, plotTop, 0, plotBottom);
+  gradient.addColorStop(0, isUp ? "rgba(88, 214, 141, 0.28)" : "rgba(255, 107, 107, 0.28)");
+  gradient.addColorStop(1, "rgba(98, 200, 221, 0)");
+  ctx.beginPath();
+  prices.forEach((price, index) => {
+    const x = xFor(index);
+    const y = yFor(price);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.lineTo(plotRight, plotBottom);
+  ctx.lineTo(plotLeft, plotBottom);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
   ctx.strokeStyle = "#62c8dd";
+  ctx.strokeStyle = lineColor;
   ctx.lineWidth = 2.4 * dpr;
   ctx.beginPath();
   prices.forEach((price, index) => {
@@ -1120,9 +1201,71 @@ function drawChart() {
     else ctx.lineTo(x, y);
   });
   ctx.stroke();
+
+  const latestY = yFor(latest);
+  ctx.strokeStyle = lineColor;
+  ctx.setLineDash([4 * dpr, 4 * dpr]);
+  ctx.beginPath();
+  ctx.moveTo(plotLeft, latestY);
+  ctx.lineTo(plotRight, latestY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const priceTag = money(latest);
+  const tagWidth = ctx.measureText(priceTag).width + 14 * dpr;
+  ctx.fillStyle = lineColor;
+  ctx.fillRect(plotRight + 7 * dpr, latestY - 12 * dpr, tagWidth, 24 * dpr);
+  ctx.fillStyle = "#101418";
+  ctx.font = `${11 * dpr}px system-ui`;
+  ctx.fillText(priceTag, plotRight + 14 * dpr, latestY + 1 * dpr);
+
   ctx.fillStyle = "#eef3f5";
   ctx.font = `${13 * dpr}px system-ui`;
-  ctx.fillText(`High ${money(max)}  Low ${money(min)}`, pad, 22 * dpr);
+  ctx.textBaseline = "alphabetic";
+  const change = latest - start;
+  const changePercent = start ? (change / start) * 100 : 0;
+  ctx.fillText(`Start ${money(start)}   High ${money(rawMax)}   Low ${money(rawMin)}   Change ${signedMoney(change)} (${signedPercent(changePercent)})`, plotLeft, 22 * dpr);
+
+  const activeIndex = Number.isInteger(hoverIndex) ? Math.min(points.length - 1, Math.max(0, hoverIndex)) : null;
+  if (activeIndex !== null) {
+    const point = points[activeIndex];
+    const price = prices[activeIndex];
+    const x = xFor(activeIndex);
+    const y = yFor(price);
+    ctx.strokeStyle = "rgba(238, 243, 245, 0.42)";
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(x, plotTop);
+    ctx.lineTo(x, plotBottom);
+    ctx.moveTo(plotLeft, y);
+    ctx.lineTo(plotRight, y);
+    ctx.stroke();
+    ctx.fillStyle = lineColor;
+    ctx.beginPath();
+    ctx.arc(x, y, 4.5 * dpr, 0, Math.PI * 2);
+    ctx.fill();
+
+    const tooltipLines = [formatChartTime(point.time), money(price)];
+    ctx.font = `${12 * dpr}px system-ui`;
+    const tooltipWidth = Math.max(...tooltipLines.map((line) => ctx.measureText(line).width)) + 18 * dpr;
+    const tooltipHeight = 48 * dpr;
+    const tooltipX = x + tooltipWidth + 14 * dpr > plotRight ? x - tooltipWidth - 12 * dpr : x + 12 * dpr;
+    const tooltipY = Math.max(plotTop + 4 * dpr, Math.min(plotBottom - tooltipHeight, y - tooltipHeight / 2));
+    ctx.fillStyle = "rgba(15, 18, 20, 0.94)";
+    ctx.fillRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+    ctx.strokeStyle = "rgba(238, 243, 245, 0.16)";
+    ctx.strokeRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+    ctx.fillStyle = "#9aa8af";
+    ctx.fillText(tooltipLines[0], tooltipX + 9 * dpr, tooltipY + 18 * dpr);
+    ctx.fillStyle = "#eef3f5";
+    ctx.fillText(tooltipLines[1], tooltipX + 9 * dpr, tooltipY + 36 * dpr);
+  }
+
+  canvas.onmousemove = (event) => {
+    const box = canvas.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - box.left - margin.left / dpr) / (plotWidth / dpr)));
+    drawChart(Math.round(ratio * (points.length - 1)));
+  };
+  canvas.onmouseleave = () => drawChart();
 }
 
 function renderCompare() {
