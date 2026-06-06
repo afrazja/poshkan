@@ -29,6 +29,10 @@ const state = {
   chartPeriod: "1mo",
   chartPoints: [],
   searchResults: [],
+  holdingsSort: "symbol",
+  holdingsDirection: "asc",
+  watchlistSort: "symbol",
+  watchlistDirection: "asc",
   compareSort: "symbol",
   compareDirection: "asc",
   compareAmount: 4,
@@ -801,12 +805,12 @@ function renderPortfolioTab(portfolio) {
     <section class="two-column">
       <div>
         <div class="section-title"><h3>Holdings</h3></div>
-        ${renderHoldingsTable(portfolioHoldings(portfolio.id).slice(0, 8))}
+        ${renderHoldingsTable(portfolioHoldings(portfolio.id), 8)}
         ${renderViewMore(portfolioHoldings(portfolio.id).length, "holdings")}
       </div>
       <div>
         <div class="section-title"><h3>Watchlist</h3></div>
-        ${renderWatchlistTable(portfolioWatchlist(portfolio.id).slice(0, 8))}
+        ${renderWatchlistTable(portfolioWatchlist(portfolio.id), 8)}
         ${renderViewMore(portfolioWatchlist(portfolio.id).length, "watchlist")}
       </div>
     </section>
@@ -863,18 +867,60 @@ function renderSearchResult(asset) {
   `;
 }
 
-function renderHoldingsTable(holdings) {
+function sortLabel(scope, column, label) {
+  const sortKey = `${scope}Sort`;
+  const directionKey = `${scope}Direction`;
+  const active = state[sortKey] === column;
+  const arrow = active ? (state[directionKey] === "asc" ? " up" : " down") : "";
+  return `<button type="button" class="${active ? "active" : ""}" data-list-sort="${scope}" data-column="${column}" title="Sort by ${label}">${label}${arrow}</button>`;
+}
+
+function sortRows(rows, scope, getValue) {
+  const sortKey = `${scope}Sort`;
+  const directionKey = `${scope}Direction`;
+  const direction = state[directionKey] === "asc" ? 1 : -1;
+  rows.sort((a, b) => {
+    const av = getValue(a, state[sortKey]);
+    const bv = getValue(b, state[sortKey]);
+    if (typeof av === "string" || typeof bv === "string") {
+      return String(av || "").localeCompare(String(bv || "")) * direction;
+    }
+    return ((Number(av) || 0) - (Number(bv) || 0)) * direction;
+  });
+  return rows;
+}
+
+function renderHoldingsTable(holdings, limit = Infinity) {
   if (!holdings.length) {
     return `<section class="empty-list"><h3>No holdings yet</h3><p>Search a stock to buy it, or add starting holdings to mirror another account.</p></section>`;
   }
+  const rows = sortRows(
+    holdings.map((holding) => {
+      const stats = holdingStats(holding);
+      return { holding, stats, companyName: holding.name || stats.quote?.shortName || "" };
+    }),
+    "holdings",
+    (row, column) => {
+      if (column === "price") return row.stats.price;
+      if (column === "shares") return row.stats.quantity;
+      if (column === "value") return row.stats.value;
+      if (column === "dayPnl") return row.stats.dayPnl;
+      if (column === "pnl") return row.stats.totalPnl;
+      if (column === "pnlPercent") return row.stats.totalPnlPercent;
+      return row.holding.symbol;
+    }
+  ).slice(0, limit);
   return `
     <div class="data-table holdings-table">
       <div class="table-row table-head">
-        <span>Stock</span><span>Price</span><span>Shares</span><span>Value</span><span>Today</span><span>Total P/L</span>
+        ${sortLabel("holdings", "symbol", "Stock")}
+        ${sortLabel("holdings", "price", "Price")}
+        ${sortLabel("holdings", "shares", "Shares")}
+        ${sortLabel("holdings", "value", "Value")}
+        ${sortLabel("holdings", "dayPnl", "Today")}
+        ${sortLabel("holdings", "pnl", "Total P/L")}
       </div>
-      ${holdings.map((holding) => {
-        const stats = holdingStats(holding);
-        const companyName = holding.name || stats.quote?.shortName || "";
+      ${rows.map(({ holding, stats, companyName }) => {
         return `
           <button class="table-row interactive-row" type="button" data-action="open-stock" data-symbol="${holding.symbol}" title="Open ${holding.symbol} details">
             <span class="stock-identity"><strong>${holding.symbol}</strong><small>${escapeHtml(companyName)}</small></span>
@@ -890,18 +936,31 @@ function renderHoldingsTable(holdings) {
   `;
 }
 
-function renderWatchlistTable(items) {
+function renderWatchlistTable(items, limit = Infinity) {
   if (!items.length) {
     return `<section class="empty-list"><h3>No watchlist stocks</h3><p>Use search to follow stocks before buying them.</p></section>`;
   }
+  const rows = sortRows(
+    items.map((item) => {
+      const quote = quoteFor(item.symbol);
+      return { item, quote, companyName: item.name || quote?.shortName || "" };
+    }),
+    "watchlist",
+    (row, column) => {
+      if (column === "price") return Number(row.quote?.regularMarketPrice) || 0;
+      if (column === "dayPercent") return Number(row.quote?.regularMarketChangePercent) || 0;
+      return row.item.symbol;
+    }
+  ).slice(0, limit);
   return `
     <div class="data-table watchlist-table">
       <div class="table-row table-head">
-        <span>Stock</span><span>Price</span><span>Day</span><span></span><span></span>
+        ${sortLabel("watchlist", "symbol", "Stock")}
+        ${sortLabel("watchlist", "price", "Price")}
+        ${sortLabel("watchlist", "dayPercent", "Day")}
+        <span></span><span></span>
       </div>
-      ${items.map((item) => {
-        const quote = quoteFor(item.symbol);
-        const companyName = item.name || quote?.shortName || "";
+      ${rows.map(({ item, quote, companyName }) => {
         return `
           <div class="table-row">
             <button type="button" class="stock-cell interactive-cell" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol} details">
@@ -1409,6 +1468,23 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const listSortButton = event.target.closest("[data-list-sort]");
+  if (listSortButton) {
+    const scope = listSortButton.dataset.listSort;
+    const column = listSortButton.dataset.column;
+    const sortKey = `${scope}Sort`;
+    const directionKey = `${scope}Direction`;
+    if (!Object.hasOwn(state, sortKey) || !Object.hasOwn(state, directionKey)) return;
+    if (state[sortKey] === column) {
+      state[directionKey] = state[directionKey] === "asc" ? "desc" : "asc";
+    } else {
+      state[sortKey] = column;
+      state[directionKey] = column === "symbol" ? "asc" : "desc";
+    }
+    render();
+    return;
+  }
+
   const sortButton = event.target.closest("[data-sort]");
   if (sortButton) {
     const column = sortButton.dataset.sort;
