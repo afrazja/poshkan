@@ -631,7 +631,7 @@ h3 {
 
 .table-row {
   display: grid;
-  grid-template-columns: 1.4fr 0.75fr 0.7fr 0.9fr 0.8fr 1fr 0.45fr;
+  grid-template-columns: 1.4fr 0.75fr 0.7fr 0.9fr 0.8fr 1fr;
   gap: 10px;
   width: 100%;
   align-items: center;
@@ -643,6 +643,26 @@ h3 {
   min-height: 58px;
   padding: 9px 12px;
   text-align: left;
+}
+
+.interactive-row,
+.interactive-cell {
+  cursor: pointer;
+}
+
+.interactive-row:hover,
+.interactive-row:focus-visible,
+.interactive-cell:hover,
+.interactive-cell:focus-visible {
+  background: rgba(98, 200, 221, 0.1);
+  color: var(--text);
+}
+
+.interactive-row:hover strong,
+.interactive-row:focus-visible strong,
+.interactive-cell:hover strong,
+.interactive-cell:focus-visible strong {
+  color: var(--accent);
 }
 
 .watchlist-table .table-row {
@@ -703,6 +723,22 @@ h3 {
 
 .table-head button.active {
   color: var(--accent);
+}
+
+.view-more-row {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 2px;
+}
+
+.view-more-row button {
+  min-height: 36px;
+  border: 1px solid rgba(98, 200, 221, 0.28);
+  border-radius: 999px;
+  background: rgba(98, 200, 221, 0.1);
+  color: var(--text);
+  font-weight: 850;
+  padding: 0 18px;
 }
 
 .positive {

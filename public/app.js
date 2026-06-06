@@ -800,14 +800,25 @@ function renderPortfolioTab(portfolio) {
     ${searchPanel}
     <section class="two-column">
       <div>
-        <div class="section-title"><h3>Holdings</h3><button type="button" data-portfolio-tab="holdings">View all</button></div>
+        <div class="section-title"><h3>Holdings</h3></div>
         ${renderHoldingsTable(portfolioHoldings(portfolio.id).slice(0, 8))}
+        ${renderViewMore(portfolioHoldings(portfolio.id).length, "holdings")}
       </div>
       <div>
-        <div class="section-title"><h3>Watchlist</h3><button type="button" data-portfolio-tab="watchlist">View all</button></div>
+        <div class="section-title"><h3>Watchlist</h3></div>
         ${renderWatchlistTable(portfolioWatchlist(portfolio.id).slice(0, 8))}
+        ${renderViewMore(portfolioWatchlist(portfolio.id).length, "watchlist")}
       </div>
     </section>
+  `;
+}
+
+function renderViewMore(total, tab) {
+  if (total <= 8) return "";
+  return `
+    <div class="view-more-row">
+      <button type="button" data-portfolio-tab="${tab}">View more</button>
+    </div>
   `;
 }
 
@@ -859,19 +870,18 @@ function renderHoldingsTable(holdings) {
   return `
     <div class="data-table holdings-table">
       <div class="table-row table-head">
-        <span>Stock</span><span>Price</span><span>Shares</span><span>Value</span><span>Today</span><span>Total P/L</span><span></span>
+        <span>Stock</span><span>Price</span><span>Shares</span><span>Value</span><span>Today</span><span>Total P/L</span>
       </div>
       ${holdings.map((holding) => {
         const stats = holdingStats(holding);
         return `
-          <button class="table-row" type="button" data-action="open-stock" data-symbol="${holding.symbol}" title="Open ${holding.symbol}">
+          <button class="table-row interactive-row" type="button" data-action="open-stock" data-symbol="${holding.symbol}" title="Open ${holding.symbol} details">
             <span><strong>${holding.symbol}</strong><small>${escapeHtml(holding.name || stats.quote?.shortName || "")}</small></span>
             <span>${money(stats.price)}</span>
             <span>${number(stats.quantity)}</span>
             <span>${money(stats.value)}</span>
             <span class="${stats.dayPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.dayPnl)}</span>
             <span class="${stats.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.totalPnl)} <small>${signedPercent(stats.totalPnlPercent)}</small></span>
-            <span class="row-chevron">View</span>
           </button>
         `;
       }).join("")}
@@ -892,7 +902,7 @@ function renderWatchlistTable(items) {
         const quote = quoteFor(item.symbol);
         return `
           <div class="table-row">
-            <button type="button" class="stock-cell" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol}">
+            <button type="button" class="stock-cell interactive-cell" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol} details">
               <strong>${item.symbol}</strong><small>${escapeHtml(item.name || quote?.shortName || "")}</small>
             </button>
             <span>${money(quote?.regularMarketPrice)}</span>
