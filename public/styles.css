@@ -1083,6 +1083,68 @@ pre {
     min-height: 36px;
   }
 
+  .holdings-table,
+  .watchlist-table {
+    display: block;
+    overflow-x: auto;
+    border: 1px solid rgba(238, 243, 245, 0.1);
+    border-radius: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .holdings-table .table-head,
+  .watchlist-table .table-head {
+    display: grid;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .holdings-table .table-row {
+    grid-template-columns: 170px 96px 92px 112px 112px 136px;
+    min-width: 718px;
+  }
+
+  .watchlist-table .table-row {
+    grid-template-columns: 180px 104px 92px 76px 96px;
+    min-width: 568px;
+  }
+
+  .holdings-table .table-row,
+  .watchlist-table .table-row {
+    gap: 10px;
+    border: 0;
+    border-bottom: 1px solid rgba(238, 243, 245, 0.08);
+    border-radius: 0;
+    padding: 9px 12px;
+  }
+
+  .holdings-table .table-row:last-child,
+  .watchlist-table .table-row:last-child {
+    border-bottom: 0;
+  }
+
+  .holdings-table .stock-identity,
+  .watchlist-table .stock-cell {
+    grid-column: auto;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .holdings-table .metric,
+  .watchlist-table .metric {
+    display: block;
+    align-self: center;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .holdings-table .metric::before,
+  .watchlist-table .metric::before {
+    content: none;
+  }
+
   .trade-panel {
     position: static;
   }
