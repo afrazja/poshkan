@@ -924,11 +924,11 @@ function renderHoldingsTable(holdings, limit = Infinity) {
         return `
           <button class="table-row interactive-row" type="button" data-action="open-stock" data-symbol="${holding.symbol}" title="Open ${holding.symbol} details">
             <span class="stock-identity"><strong>${holding.symbol}</strong><small>${escapeHtml(companyName)}</small></span>
-            <span>${money(stats.price)}</span>
-            <span>${number(stats.quantity)}</span>
-            <span>${money(stats.value)}</span>
-            <span class="${stats.dayPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.dayPnl)}</span>
-            <span class="pnl-stack ${stats.totalPnl >= 0 ? "positive" : "negative"}"><strong>${signedMoney(stats.totalPnl)}</strong><small>${signedPercent(stats.totalPnlPercent)}</small></span>
+            <span class="metric" data-label="Price">${money(stats.price)}</span>
+            <span class="metric" data-label="Shares">${number(stats.quantity)}</span>
+            <span class="metric" data-label="Value">${money(stats.value)}</span>
+            <span class="metric ${stats.dayPnl >= 0 ? "positive" : "negative"}" data-label="Today">${signedMoney(stats.dayPnl)}</span>
+            <span class="metric pnl-stack ${stats.totalPnl >= 0 ? "positive" : "negative"}" data-label="Total P/L"><strong>${signedMoney(stats.totalPnl)}</strong><small>${signedPercent(stats.totalPnlPercent)}</small></span>
           </button>
         `;
       }).join("")}
@@ -966,8 +966,8 @@ function renderWatchlistTable(items, limit = Infinity) {
             <button type="button" class="stock-cell interactive-cell" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol} details">
               <strong>${item.symbol}</strong><small>${escapeHtml(companyName)}</small>
             </button>
-            <span>${money(quote?.regularMarketPrice)}</span>
-            <span class="${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(quote?.regularMarketChangePercent)}</span>
+            <span class="metric" data-label="Price">${money(quote?.regularMarketPrice)}</span>
+            <span class="metric ${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}" data-label="Day">${signedPercent(quote?.regularMarketChangePercent)}</span>
             <button type="button" data-action="trade-asset" data-symbol="${item.symbol}" title="Buy ${item.symbol}">Buy</button>
             <button type="button" data-action="remove-watch" data-symbol="${item.symbol}" title="Remove ${item.symbol}">Remove</button>
           </div>

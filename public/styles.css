@@ -1044,6 +1044,44 @@ pre {
     border-radius: 9px;
   }
 
+  .holdings-table .table-row,
+  .watchlist-table .table-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .holdings-table .stock-identity,
+  .watchlist-table .stock-cell {
+    grid-column: 1 / -1;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(238, 243, 245, 0.08);
+  }
+
+  .holdings-table .metric,
+  .watchlist-table .metric {
+    display: grid;
+    gap: 3px;
+    align-self: stretch;
+    border-radius: 8px;
+    background: rgba(238, 243, 245, 0.04);
+    padding: 8px;
+    text-align: left;
+  }
+
+  .holdings-table .metric::before,
+  .watchlist-table .metric::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+
+  .watchlist-table .table-row > button:not(.stock-cell) {
+    min-height: 36px;
+  }
+
   .trade-panel {
     position: static;
   }
