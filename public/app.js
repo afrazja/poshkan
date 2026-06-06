@@ -874,14 +874,15 @@ function renderHoldingsTable(holdings) {
       </div>
       ${holdings.map((holding) => {
         const stats = holdingStats(holding);
+        const companyName = holding.name || stats.quote?.shortName || "";
         return `
           <button class="table-row interactive-row" type="button" data-action="open-stock" data-symbol="${holding.symbol}" title="Open ${holding.symbol} details">
-            <span><strong>${holding.symbol}</strong><small>${escapeHtml(holding.name || stats.quote?.shortName || "")}</small></span>
+            <span class="stock-identity"><strong>${holding.symbol}</strong><small>${escapeHtml(companyName)}</small></span>
             <span>${money(stats.price)}</span>
             <span>${number(stats.quantity)}</span>
             <span>${money(stats.value)}</span>
             <span class="${stats.dayPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.dayPnl)}</span>
-            <span class="${stats.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(stats.totalPnl)} <small>${signedPercent(stats.totalPnlPercent)}</small></span>
+            <span class="pnl-stack ${stats.totalPnl >= 0 ? "positive" : "negative"}"><strong>${signedMoney(stats.totalPnl)}</strong><small>${signedPercent(stats.totalPnlPercent)}</small></span>
           </button>
         `;
       }).join("")}
@@ -900,10 +901,11 @@ function renderWatchlistTable(items) {
       </div>
       ${items.map((item) => {
         const quote = quoteFor(item.symbol);
+        const companyName = item.name || quote?.shortName || "";
         return `
           <div class="table-row">
             <button type="button" class="stock-cell interactive-cell" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol} details">
-              <strong>${item.symbol}</strong><small>${escapeHtml(item.name || quote?.shortName || "")}</small>
+              <strong>${item.symbol}</strong><small>${escapeHtml(companyName)}</small>
             </button>
             <span>${money(quote?.regularMarketPrice)}</span>
             <span class="${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(quote?.regularMarketChangePercent)}</span>
@@ -1133,7 +1135,7 @@ function renderCompare() {
       </div>
       ${rows.map((row) => `
         <button class="table-row" type="button" data-action="open-stock" data-symbol="${row.symbol}">
-          <span><strong>${row.symbol}</strong><small>${row.holding ? "Holding" : "Watchlist"}</small></span>
+          <span class="stock-identity"><strong>${row.symbol}</strong><small>${escapeHtml(row.holding?.name || row.quote?.shortName || "")}</small></span>
           <span>${money(row.quote?.regularMarketPrice)}</span>
           <span>${row.stats ? number(row.stats.quantity) : "--"}</span>
           <span class="${Number(row.performance?.changePercent) >= 0 ? "positive" : "negative"}">${signedPercent(row.performance?.changePercent)} ${row.performance?.effectiveLabel ? `<small>(${escapeHtml(row.performance.effectiveLabel)})</small>` : ""}</span>

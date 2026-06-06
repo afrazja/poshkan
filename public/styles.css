@@ -596,7 +596,9 @@ h3 {
 }
 
 .result-main,
-.stock-cell {
+.stock-cell,
+.stock-identity,
+.pnl-stack {
   display: grid;
   gap: 2px;
   text-align: left;
@@ -604,9 +606,20 @@ h3 {
 
 .result-main small,
 .stock-cell small,
+.stock-identity small,
+.pnl-stack small,
 .table-row small {
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+.pnl-stack strong {
+  font-size: 0.95rem;
+}
+
+.pnl-stack small {
+  color: inherit;
+  opacity: 0.82;
 }
 
 .two-column,
