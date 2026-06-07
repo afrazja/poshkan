@@ -45,6 +45,12 @@ const FOREX_NAMES = {
   "GBP/JPY": "British Pound / Japanese Yen"
 };
 
+const CRYPTO_NAMES = {
+  "BTC/USD": "Bitcoin / US Dollar",
+  "ETH/USD": "Ethereum / US Dollar",
+  "XRP/USD": "XRP / US Dollar"
+};
+
 const HISTORY_PERIODS = {
   "1h": { label: "1H", range: "1d", interval: "1m", points: 60 },
   "4h": { label: "4H", range: "1d", interval: "5m", points: 48 },
@@ -78,8 +84,20 @@ function normalizeForexSymbol(value) {
   return letters.length === 6 ? `${letters.slice(0, 3)}/${letters.slice(3)}` : clean;
 }
 
+function normalizeCryptoSymbol(value) {
+  const clean = cleanSymbol(value);
+  if (clean.includes("/")) return clean;
+  const letters = clean.replace(/[^A-Z]/g, "");
+  if (letters === "BTC" || letters === "BITCOIN") return "BTC/USD";
+  if (letters === "ETH" || letters === "ETHEREUM") return "ETH/USD";
+  if (letters === "XRP" || letters === "RIPPLE") return "XRP/USD";
+  return letters.length > 3 ? `${letters.slice(0, 3)}/${letters.slice(3)}` : `${letters}/USD`;
+}
+
 function assetTypeFromQuery(query) {
-  return query.get("type") === "forex" || query.get("assetType") === "forex" ? "forex" : "us_stock";
+  const type = query.get("type") || query.get("assetType");
+  if (type === "forex" || type === "crypto") return type;
+  return "us_stock";
 }
 
 const getQuery = (req) => new URL(req.url, `http://${req.headers.host}`).searchParams;
@@ -322,6 +340,33 @@ function demoForexQuote(symbol, index = 0) {
   };
 }
 
+function demoCryptoQuote(symbol, index = 0) {
+  const pair = normalizeCryptoSymbol(symbol);
+  const baseByPair = { "BTC/USD": 68000, "ETH/USD": 3500, "XRP/USD": 0.62 };
+  const base = baseByPair[pair] || 100;
+  const wave = Math.sin(Date.now() / 900000 + index) * base * 0.012;
+  const price = Number((base + wave).toFixed(pair === "XRP/USD" ? 4 : 2));
+  const change = Number((wave / 2).toFixed(pair === "XRP/USD" ? 4 : 2));
+  const previous = price - change;
+  return {
+    symbol: pair,
+    requestedSymbol: symbol,
+    shortName: CRYPTO_NAMES[pair] || `${pair} Crypto Pair`,
+    regularMarketPrice: price,
+    regularMarketChange: change,
+    regularMarketChangePercent: previous ? Number(((change / previous) * 100).toFixed(2)) : 0,
+    regularMarketTime: Math.floor(Date.now() / 1000),
+    regularMarketVolume: null,
+    regularMarketDayHigh: Number((price + Math.abs(change) * 1.8).toFixed(pair === "XRP/USD" ? 4 : 2)),
+    regularMarketDayLow: Number((price - Math.abs(change) * 1.8).toFixed(pair === "XRP/USD" ? 4 : 2)),
+    marketState: "CRYPTO",
+    source: "Demo crypto fallback",
+    cacheStatus: "demo",
+    fetchedAt: Date.now(),
+    dataAgeSeconds: 0
+  };
+}
+
 function stampQuote(quote, cacheStatus, fetchedAt = Date.now()) {
   return {
     ...quote,
@@ -379,6 +424,48 @@ async function forexQuoteForSymbol(symbol) {
     };
     const fetchedAt = Date.now();
     quoteCache.set(`forex:${pair}`, { quote: stampQuote(quote, "fresh", fetchedAt), fetchedAt });
+    return stampQuote(quote, "fresh", fetchedAt);
+  } catch (error) {
+    if (cached && now - cached.fetchedAt <= QUOTE_STALE_TTL_MS) {
+      return stampQuote(cached.quote, "stale", cached.fetchedAt);
+    }
+    throw error;
+  }
+}
+
+async function cryptoQuoteForSymbol(symbol) {
+  const pair = normalizeCryptoSymbol(symbol);
+  const cached = quoteCache.get(`crypto:${pair}`);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt <= QUOTE_CACHE_TTL_MS) {
+    return stampQuote(cached.quote, "cached", cached.fetchedAt);
+  }
+
+  try {
+    const data = await fetchTwelveData("quote", { symbol: pair });
+    const price = Number(data.close || data.price || data.previous_close);
+    if (!Number.isFinite(price)) throw new Error(`No usable crypto quote for ${pair}`);
+    const change = Number(data.change);
+    const percent = Number(data.percent_change);
+    const quote = {
+      symbol: pair,
+      requestedSymbol: symbol,
+      shortName: data.name || CRYPTO_NAMES[pair] || `${pair} Crypto Pair`,
+      regularMarketPrice: price,
+      regularMarketChange: Number.isFinite(change) ? change : null,
+      regularMarketChangePercent: Number.isFinite(percent) ? percent : null,
+      regularMarketTime: data.timestamp || Math.floor(Date.now() / 1000),
+      regularMarketVolume: null,
+      regularMarketDayHigh: Number(data.high) || null,
+      regularMarketDayLow: Number(data.low) || null,
+      marketState: "CRYPTO",
+      source: "Twelve Data",
+      cacheStatus: "fresh",
+      fetchedAt: Date.now(),
+      dataAgeSeconds: 0
+    };
+    const fetchedAt = Date.now();
+    quoteCache.set(`crypto:${pair}`, { quote: stampQuote(quote, "fresh", fetchedAt), fetchedAt });
     return stampQuote(quote, "fresh", fetchedAt);
   } catch (error) {
     if (cached && now - cached.fetchedAt <= QUOTE_STALE_TTL_MS) {
@@ -482,6 +569,31 @@ async function searchHandler(req, res) {
       return json(res, 200, {
         warning: error.message,
         suggestions: localSuggestions.length ? localSuggestions : [{ symbol: pair, name: FOREX_NAMES[pair] || `${pair} Forex Pair`, exchange: "Forex", quoteType: "FOREX" }]
+      });
+    }
+  }
+
+  if (assetType === "crypto") {
+    const pair = normalizeCryptoSymbol(query);
+    const localSuggestions = Object.entries(CRYPTO_NAMES)
+      .filter(([symbol, name]) => symbol.includes(pair) || symbol.replace("/", "").includes(pair.replace("/", "")) || name.toUpperCase().includes(query.toUpperCase()))
+      .slice(0, 8)
+      .map(([symbol, name]) => ({ symbol, name, exchange: "Crypto", quoteType: "CRYPTO" }));
+    try {
+      const data = await fetchTwelveData("symbol_search", { symbol: pair, outputsize: 8 });
+      const suggestions = (Array.isArray(data.data) ? data.data : [])
+        .map((item) => ({
+          symbol: normalizeCryptoSymbol(item.symbol),
+          name: item.instrument_name || CRYPTO_NAMES[normalizeCryptoSymbol(item.symbol)] || item.symbol,
+          exchange: item.exchange || "Crypto",
+          quoteType: "CRYPTO"
+        }))
+        .filter((item) => item.symbol.includes("/"));
+      return json(res, 200, { suggestions: suggestions.length ? suggestions : localSuggestions });
+    } catch (error) {
+      return json(res, 200, {
+        warning: error.message,
+        suggestions: localSuggestions.length ? localSuggestions : [{ symbol: pair, name: CRYPTO_NAMES[pair] || `${pair} Crypto Pair`, exchange: "Crypto", quoteType: "CRYPTO" }]
       });
     }
   }
@@ -675,6 +787,42 @@ function demoForexHistory(symbol, config = HISTORY_PERIODS["1d"]) {
   });
 }
 
+function demoCryptoHistory(symbol, config = HISTORY_PERIODS["1d"]) {
+  const pair = normalizeCryptoSymbol(symbol);
+  const baseByPair = { "BTC/USD": 68000, "ETH/USD": 3500, "XRP/USD": 0.62 };
+  const start = baseByPair[pair] || 100;
+  const now = Math.floor(Date.now() / 1000);
+  const count = config.points || 64;
+  const stepSeconds =
+    {
+      "1m": 60,
+      "5m": 300,
+      "15m": 900,
+      "30m": 1800,
+      "1h": 3600,
+      "1day": 86400,
+      "1week": 604800
+    }[config.interval] || 300;
+  const decimals = pair === "XRP/USD" ? 4 : 2;
+
+  return Array.from({ length: count }, (_, index) => {
+    const drift = Math.sin(index / 5 + start) * start * 0.012 + Math.cos(index / 9) * start * 0.006;
+    const close = start + drift + index * start * 0.0002;
+    const open = close - Math.sin(index / 4 + start) * start * 0.004;
+    const high = Math.max(open, close) + start * 0.003;
+    const low = Math.min(open, close) - start * 0.003;
+    return {
+      time: now - (count - 1 - index) * stepSeconds,
+      open: Number(open.toFixed(decimals)),
+      high: Number(high.toFixed(decimals)),
+      low: Number(low.toFixed(decimals)),
+      close: Number(close.toFixed(decimals)),
+      price: Number(close.toFixed(decimals)),
+      volume: null
+    };
+  });
+}
+
 function demoNews(symbol) {
   return [
     {
@@ -758,6 +906,34 @@ async function forexPerformanceForSymbol(symbol, config) {
   };
 }
 
+async function cryptoPerformanceForSymbol(symbol, config) {
+  const pair = normalizeCryptoSymbol(symbol);
+  const data = await fetchTwelveData("time_series", {
+    symbol: pair,
+    interval: twelveInterval(config.interval),
+    outputsize: String(config.points || 120),
+    order: "ASC"
+  });
+  const points = (Array.isArray(data.values) ? data.values : [])
+    .map((item) => ({ time: Math.floor(new Date(item.datetime).getTime() / 1000), price: Number(item.close) }))
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price));
+  if (points.length < 2) throw new Error(`Not enough performance data for ${pair}`);
+  const first = points[0];
+  const last = points[points.length - 1];
+  const change = last.price - first.price;
+  const changePercent = first.price ? (change / first.price) * 100 : 0;
+  return {
+    symbol: pair,
+    startPrice: Number(first.price.toFixed(6)),
+    endPrice: Number(last.price.toFixed(6)),
+    change: Number(change.toFixed(6)),
+    changePercent: Number(changePercent.toFixed(4)),
+    startTime: first.time,
+    endTime: last.time,
+    effectiveLabel: config.effectiveLabel || ""
+  };
+}
+
 function demoForexPerformance(symbol, config) {
   const history = demoForexHistory(symbol, config);
   const first = history[0];
@@ -766,6 +942,24 @@ function demoForexPerformance(symbol, config) {
   const changePercent = first.price ? (change / first.price) * 100 : 0;
   return {
     symbol: normalizeForexSymbol(symbol),
+    startPrice: first.price,
+    endPrice: last.price,
+    change: Number(change.toFixed(6)),
+    changePercent: Number(changePercent.toFixed(4)),
+    startTime: first.time,
+    endTime: last.time,
+    effectiveLabel: config.effectiveLabel || ""
+  };
+}
+
+function demoCryptoPerformance(symbol, config) {
+  const history = demoCryptoHistory(symbol, config);
+  const first = history[0];
+  const last = history[history.length - 1];
+  const change = last.price - first.price;
+  const changePercent = first.price ? (change / first.price) * 100 : 0;
+  return {
+    symbol: normalizeCryptoSymbol(symbol),
     startPrice: first.price,
     endPrice: last.price,
     change: Number(change.toFixed(6)),
@@ -786,19 +980,19 @@ function holdingPeriodLabel(seconds) {
 async function quotesHandler(req, res) {
   const query = getQuery(req);
   const assetType = assetTypeFromQuery(query);
-  const symbols = (query.get("symbols") || (assetType === "forex" ? "EUR/USD,GBP/USD,USD/JPY" : "AAPL,MSFT,NVDA"))
+  const symbols = (query.get("symbols") || (assetType === "forex" ? "EUR/USD,GBP/USD,USD/JPY" : assetType === "crypto" ? "BTC/USD,ETH/USD,XRP/USD" : "AAPL,MSFT,NVDA"))
     .split(",")
-    .map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol)))
+    .map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : assetType === "crypto" ? normalizeCryptoSymbol(symbol) : cleanSymbol(symbol)))
     .filter(Boolean)
     .slice(0, MAX_QUOTE_SYMBOLS);
 
   if (!symbols.length) {
-    return json(res, 400, { error: `Add at least one ${assetType === "forex" ? "forex pair" : "stock symbol"}.` });
+    return json(res, 400, { error: `Add at least one ${assetType === "forex" ? "forex pair" : assetType === "crypto" ? "crypto pair" : "stock symbol"}.` });
   }
 
   try {
     const quoteResults = await Promise.allSettled(
-      symbols.map((symbol) => (assetType === "forex" ? forexQuoteForSymbol(symbol) : quoteForSymbol(symbol)))
+      symbols.map((symbol) => (assetType === "forex" ? forexQuoteForSymbol(symbol) : assetType === "crypto" ? cryptoQuoteForSymbol(symbol) : quoteForSymbol(symbol)))
     );
 
     const invalids = [];
@@ -813,7 +1007,7 @@ async function quotesHandler(req, res) {
         });
         return [];
       }
-      return [assetType === "forex" ? demoForexQuote(symbols[index], index) : demoQuote(symbols[index], index)];
+      return [assetType === "forex" ? demoForexQuote(symbols[index], index) : assetType === "crypto" ? demoCryptoQuote(symbols[index], index) : demoQuote(symbols[index], index)];
     });
     const failed = quoteResults.filter((result) => result.status === "rejected" && !result.reason?.invalidSymbol).length;
     const cached = quotes.filter((quote) => quote.cacheStatus === "cached").length;
@@ -837,7 +1031,7 @@ async function quotesHandler(req, res) {
       source: "demo",
       warning: error.message,
       reliability: { live: 0, cached: 0, stale: 0, demo: symbols.length },
-      quotes: symbols.map((symbol, index) => (assetType === "forex" ? demoForexQuote(symbol, index) : demoQuote(symbol, index)))
+      quotes: symbols.map((symbol, index) => (assetType === "forex" ? demoForexQuote(symbol, index) : assetType === "crypto" ? demoCryptoQuote(symbol, index) : demoQuote(symbol, index)))
     });
   }
 }
@@ -847,7 +1041,7 @@ async function performanceHandler(req, res) {
   const assetType = assetTypeFromQuery(query);
   const symbols = (query.get("symbols") || "")
     .split(",")
-    .map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol)))
+    .map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : assetType === "crypto" ? normalizeCryptoSymbol(symbol) : cleanSymbol(symbol)))
     .filter(Boolean)
     .slice(0, MAX_QUOTE_SYMBOLS);
   const config = getCustomHistoryConfig(query.get("amount") || 4, query.get("unit") || "days");
@@ -878,7 +1072,7 @@ async function performanceHandler(req, res) {
         effectiveConfig.interval = heldSeconds <= 5 * 86400 ? "5m" : heldSeconds <= 30 * 86400 ? "1h" : config.interval;
         effectiveConfig.effectiveLabel = holdingPeriodLabel(heldSeconds);
       }
-      return assetType === "forex" ? forexPerformanceForSymbol(symbol, effectiveConfig) : performanceForSymbol(symbol, effectiveConfig);
+      return assetType === "forex" ? forexPerformanceForSymbol(symbol, effectiveConfig) : assetType === "crypto" ? cryptoPerformanceForSymbol(symbol, effectiveConfig) : performanceForSymbol(symbol, effectiveConfig);
     })
   );
   const performance = [];
@@ -890,6 +1084,8 @@ async function performanceHandler(req, res) {
     } else {
       if (assetType === "forex") {
         performance.push(demoForexPerformance(symbols[index], config));
+      } else if (assetType === "crypto") {
+        performance.push(demoCryptoPerformance(symbols[index], config));
       }
       failed.push({ symbol: symbols[index], error: result.reason?.message || "Performance unavailable" });
     }
@@ -906,7 +1102,7 @@ async function performanceHandler(req, res) {
 async function historyHandler(req, res) {
   const query = getQuery(req);
   const assetType = assetTypeFromQuery(query);
-  const symbol = assetType === "forex" ? normalizeForexSymbol(query.get("symbol")) : cleanSymbol(query.get("symbol"));
+  const symbol = assetType === "forex" ? normalizeForexSymbol(query.get("symbol")) : assetType === "crypto" ? normalizeCryptoSymbol(query.get("symbol")) : cleanSymbol(query.get("symbol"));
   const config = getHistoryConfig(query);
 
   if (!symbol) {
@@ -939,6 +1135,34 @@ async function historyHandler(req, res) {
         period: config.period,
         periodLabel: config.label,
         history: history.length ? history : demoForexHistory(symbol, config)
+      });
+    }
+
+    if (assetType === "crypto") {
+      const data = await fetchTwelveData("time_series", {
+        symbol,
+        interval: twelveInterval(config.interval),
+        outputsize: String(config.points || 120),
+        order: "ASC"
+      });
+      const values = Array.isArray(data.values) ? data.values : [];
+      const history = values
+        .map((item) => ({
+          time: Math.floor(new Date(item.datetime).getTime() / 1000),
+          open: Number(item.open),
+          high: Number(item.high),
+          low: Number(item.low),
+          close: Number(item.close),
+          price: Number(item.close),
+          volume: null
+        }))
+        .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price));
+      return json(res, 200, {
+        source: "twelve-data",
+        symbol,
+        period: config.period,
+        periodLabel: config.label,
+        history: history.length ? history : demoCryptoHistory(symbol, config)
       });
     }
 
@@ -985,7 +1209,7 @@ async function historyHandler(req, res) {
       symbol,
       period: config.period,
       periodLabel: config.label,
-      history: assetType === "forex" ? demoForexHistory(symbol, config) : demoHistory(symbol, config)
+      history: assetType === "forex" ? demoForexHistory(symbol, config) : assetType === "crypto" ? demoCryptoHistory(symbol, config) : demoHistory(symbol, config)
     });
   }
 }

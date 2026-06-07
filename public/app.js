@@ -1,6 +1,7 @@
 const STARTING_CASH = 100000;
 const POPULAR_STOCKS = ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD"];
 const POPULAR_FOREX = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "AUD/USD", "USD/CHF"];
+const POPULAR_CRYPTO = ["BTC/USD", "ETH/USD", "XRP/USD"];
 const PERIODS = {
   "1d": "1D",
   "5d": "5D",
@@ -98,14 +99,31 @@ function normalizeForexSymbol(value) {
   return letters.length === 6 ? `${letters.slice(0, 3)}/${letters.slice(3)}` : clean;
 }
 
+function normalizeCryptoSymbol(value) {
+  const clean = cleanSymbol(value);
+  if (clean.includes("/")) return clean;
+  const letters = clean.replace(/[^A-Z]/g, "");
+  if (letters === "BTC" || letters === "BITCOIN") return "BTC/USD";
+  if (letters === "ETH" || letters === "ETHEREUM") return "ETH/USD";
+  if (letters === "XRP" || letters === "RIPPLE") return "XRP/USD";
+  return `${letters}/USD`;
+}
+
 function assetLabel(type) {
   if (type === "forex") return "Forex";
-  if (type === "crypto") return "Crypto coming soon";
+  if (type === "crypto") return "Crypto";
   return "US Stocks";
 }
 
 function assetTypeForPortfolio(portfolio = activePortfolio()) {
-  return portfolio?.account_type === "forex" ? "forex" : "us_stock";
+  if (portfolio?.account_type === "forex" || portfolio?.account_type === "crypto") return portfolio.account_type;
+  return "us_stock";
+}
+
+function normalizeAssetSymbol(value, assetType = assetTypeForPortfolio()) {
+  if (assetType === "forex") return normalizeForexSymbol(value);
+  if (assetType === "crypto") return normalizeCryptoSymbol(value);
+  return cleanSymbol(value);
 }
 
 function money(value) {
@@ -261,7 +279,7 @@ async function loadConfig() {
 }
 
 async function loadQuotes(symbols = allSymbols(), assetType = assetTypeForPortfolio()) {
-  const clean = [...new Set(symbols.map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol))).filter(Boolean))];
+  const clean = [...new Set(symbols.map((symbol) => normalizeAssetSymbol(symbol, assetType)).filter(Boolean))];
   if (!clean.length) return;
   const data = await fetchJson(`/api/quotes?symbols=${encodeURIComponent(clean.join(","))}&type=${encodeURIComponent(assetType)}`);
   (data.quotes || []).forEach((quote) => state.quotes.set(cleanSymbol(quote.symbol), quote));
@@ -378,12 +396,6 @@ async function createPortfolio(event) {
     submit.disabled = false;
     return;
   }
-  if (accountType === "crypto") {
-    setPortfolioMessage("Crypto portfolios are planned for the next phase.", "warning");
-    submit.disabled = false;
-    return;
-  }
-
   const { data, error } = await state.supabase
     .from("portfolios")
     .insert({ user_id: userId, name, account_type: accountType, starting_cash: cash, cash })
@@ -394,21 +406,21 @@ async function createPortfolio(event) {
   const portfolio = data;
   const starting = parseStartingHoldings(elements.portfolioStartingHoldings.value);
   if (starting.length) {
-    const symbols = starting.map((item) => (accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol));
+    const symbols = starting.map((item) => normalizeAssetSymbol(item.symbol, accountType));
     await loadQuotes(symbols, accountType);
     const holdings = starting.map((item) => ({
       portfolio_id: portfolio.id,
       user_id: userId,
-      symbol: accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol,
+      symbol: normalizeAssetSymbol(item.symbol, accountType),
       asset_type: accountType,
-      name: quoteFor(accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol)?.shortName || item.symbol,
+      name: quoteFor(normalizeAssetSymbol(item.symbol, accountType))?.shortName || item.symbol,
       quantity: item.quantity,
       avg_cost: item.avgCost
     }));
     const trades = starting.map((item) => ({
       portfolio_id: portfolio.id,
       user_id: userId,
-      symbol: accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol,
+      symbol: normalizeAssetSymbol(item.symbol, accountType),
       asset_type: accountType,
       trade_type: "starting_position",
       quantity: item.quantity,
@@ -451,8 +463,7 @@ async function addToWatchlist(asset = state.selectedSearchAsset) {
   const portfolio = activePortfolio();
   if (!portfolio || !asset) return;
   const assetType = assetTypeForPortfolio(portfolio);
-  const symbol = assetType === "forex" ? normalizeForexSymbol(asset.symbol) : cleanSymbol(asset.symbol);
-  if (portfolio.account_type === "crypto") return;
+  const symbol = normalizeAssetSymbol(asset.symbol, assetType);
   if (portfolioHoldings().some((holding) => holding.symbol === symbol)) {
     setStatus(`${symbol} is already in holdings.`, "warning");
     return;
@@ -522,8 +533,8 @@ async function setStartingHolding(symbol, quantity, avgCost) {
 
 async function executeTrade(symbol, side, quantity) {
   const portfolio = activePortfolio();
-  if (portfolio?.account_type === "forex") {
-    setStatus("Forex paper orders need lot size, pip, leverage, and margin rules. This stage adds Forex quotes and charts first.", "warning");
+  if (portfolio?.account_type === "forex" || portfolio?.account_type === "crypto") {
+    setStatus(`${portfolio.account_type === "forex" ? "Forex" : "Crypto"} paper orders need a dedicated position model. This stage adds quotes and charts first.`, "warning");
     return;
   }
   const clean = cleanSymbol(symbol);
@@ -629,7 +640,7 @@ async function deleteWatchlistSymbol(symbol) {
 }
 
 async function loadStockDetail(symbol) {
-  const clean = assetTypeForPortfolio() === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol);
+  const clean = normalizeAssetSymbol(symbol);
   state.selectedSymbol = clean;
   state.page = "stock";
   state.stockTab = "chart";
@@ -851,9 +862,6 @@ function renderPortfolio() {
 }
 
 function renderPortfolioTab(portfolio) {
-  if (portfolio.account_type === "crypto") {
-    return `<section class="empty-state compact"><h3>Crypto portfolios are coming soon.</h3><p>The data model is ready, but trading will be added in a later phase.</p></section>`;
-  }
   const searchPanel = renderSearchPanel();
   if (state.portfolioTab === "holdings") return `${searchPanel}${renderHoldingsTable(portfolioHoldings(portfolio.id))}`;
   if (state.portfolioTab === "watchlist") return `${searchPanel}${renderWatchlistTable(portfolioWatchlist(portfolio.id))}`;
@@ -887,16 +895,18 @@ function renderViewMore(total, tab) {
 function renderSearchPanel() {
   const portfolio = activePortfolio();
   const isForex = portfolio?.account_type === "forex";
-  const popular = isForex ? POPULAR_FOREX : POPULAR_STOCKS;
+  const isCrypto = portfolio?.account_type === "crypto";
+  const popular = isForex ? POPULAR_FOREX : isCrypto ? POPULAR_CRYPTO : POPULAR_STOCKS;
+  const assetName = isForex ? "forex pair" : isCrypto ? "crypto pair" : "stock";
   return `
     <section class="search-panel">
       <div>
-        <h3>${isForex ? "Add forex pair" : "Add stock"}</h3>
-        <p>${isForex ? "Search a currency pair such as EUR/USD or GBP/USD." : "Search by company name or symbol. Choose the result before adding or trading."}</p>
+        <h3>Add ${assetName}</h3>
+        <p>${isForex ? "Search a currency pair such as EUR/USD or GBP/USD." : isCrypto ? "Search Bitcoin, Ethereum, XRP, or a pair such as BTC/USD." : "Search by company name or symbol. Choose the result before adding or trading."}</p>
       </div>
       <form id="asset-search-form" class="search-form">
-        <input id="asset-search-input" placeholder="${isForex ? "Search EUR/USD, GBP/USD..." : "Search Apple, Tesla, NVDA..."}" autocomplete="off" />
-        <button type="submit" title="${isForex ? "Search forex pair" : "Search stock"}">Search</button>
+        <input id="asset-search-input" placeholder="${isForex ? "Search EUR/USD, GBP/USD..." : isCrypto ? "Search BTC/USD, ETH/USD, XRP/USD..." : "Search Apple, Tesla, NVDA..."}" autocomplete="off" />
+        <button type="submit" title="Search ${assetName}">Search</button>
       </form>
       <div class="popular-row">
         <span>Popular to explore</span>
@@ -911,7 +921,7 @@ function renderSearchPanel() {
 
 function renderSearchResult(asset) {
   const quote = quoteFor(asset.symbol);
-  const isForex = assetTypeForPortfolio() === "forex";
+  const chartOnly = assetTypeForPortfolio() === "forex" || assetTypeForPortfolio() === "crypto";
   return `
     <article class="search-result">
       <button type="button" class="result-main" data-action="open-stock" data-symbol="${asset.symbol}" title="Open ${asset.symbol}">
@@ -924,7 +934,7 @@ function renderSearchResult(asset) {
         <span class="${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(quote?.regularMarketChangePercent)}</span>
       </div>
       <button type="button" data-action="watch-asset" data-symbol="${asset.symbol}" title="Add ${asset.symbol} to watchlist">Watch</button>
-      ${isForex ? `<button type="button" data-action="open-stock" data-symbol="${asset.symbol}" title="Open ${asset.symbol} chart">Chart</button>` : `<button type="button" data-action="trade-asset" data-symbol="${asset.symbol}" title="Buy ${asset.symbol} with paper cash">Buy</button>`}
+      ${chartOnly ? `<button type="button" data-action="open-stock" data-symbol="${asset.symbol}" title="Open ${asset.symbol} chart">Chart</button>` : `<button type="button" data-action="trade-asset" data-symbol="${asset.symbol}" title="Buy ${asset.symbol} with paper cash">Buy</button>`}
     </article>
   `;
 }
@@ -954,9 +964,12 @@ function sortRows(rows, scope, getValue) {
 
 function renderHoldingsTable(holdings, limit = Infinity) {
   if (!holdings.length) {
-    return `<section class="empty-list"><h3>No holdings yet</h3><p>Search ${assetTypeForPortfolio() === "forex" ? "a forex pair" : "a stock"} to add it, or add starting holdings to mirror another account.</p></section>`;
+    const type = assetTypeForPortfolio();
+    return `<section class="empty-list"><h3>No holdings yet</h3><p>Search ${type === "forex" ? "a forex pair" : type === "crypto" ? "a crypto pair" : "a stock"} to add it, or add starting holdings to mirror another account.</p></section>`;
   }
-  const isForex = assetTypeForPortfolio() === "forex";
+  const type = assetTypeForPortfolio();
+  const isForex = type === "forex";
+  const isCrypto = type === "crypto";
   const rows = sortRows(
     holdings.map((holding) => {
       const stats = holdingStats(holding);
@@ -976,7 +989,7 @@ function renderHoldingsTable(holdings, limit = Infinity) {
   return `
     <div class="data-table holdings-table">
       <div class="table-row table-head">
-        ${sortLabel("holdings", "symbol", isForex ? "Pair" : "Stock")}
+        ${sortLabel("holdings", "symbol", isForex || isCrypto ? "Pair" : "Stock")}
         ${sortLabel("holdings", "price", "Price")}
         ${sortLabel("holdings", "shares", "Shares")}
         ${sortLabel("holdings", "value", "Value")}
@@ -1001,7 +1014,8 @@ function renderHoldingsTable(holdings, limit = Infinity) {
 
 function renderWatchlistTable(items, limit = Infinity) {
   if (!items.length) {
-    return `<section class="empty-list"><h3>No watchlist ${assetTypeForPortfolio() === "forex" ? "pairs" : "stocks"}</h3><p>Use search to follow ${assetTypeForPortfolio() === "forex" ? "currency pairs" : "stocks"} before trading them.</p></section>`;
+    const type = assetTypeForPortfolio();
+    return `<section class="empty-list"><h3>No watchlist ${type === "us_stock" ? "stocks" : "pairs"}</h3><p>Use search to follow ${type === "forex" ? "currency pairs" : type === "crypto" ? "crypto pairs" : "stocks"} before trading them.</p></section>`;
   }
   const rows = sortRows(
     items.map((item) => {
@@ -1015,11 +1029,12 @@ function renderWatchlistTable(items, limit = Infinity) {
       return row.item.symbol;
     }
   ).slice(0, limit);
-  const isForex = assetTypeForPortfolio() === "forex";
+  const type = assetTypeForPortfolio();
+  const chartOnly = type === "forex" || type === "crypto";
   return `
     <div class="data-table watchlist-table">
       <div class="table-row table-head">
-        ${sortLabel("watchlist", "symbol", isForex ? "Pair" : "Stock")}
+        ${sortLabel("watchlist", "symbol", chartOnly ? "Pair" : "Stock")}
         ${sortLabel("watchlist", "price", "Price")}
         ${sortLabel("watchlist", "dayPercent", "Day")}
         <span></span><span></span>
@@ -1032,7 +1047,7 @@ function renderWatchlistTable(items, limit = Infinity) {
             </button>
             <span class="metric" data-label="Price">${money(quote?.regularMarketPrice)}</span>
             <span class="metric ${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}" data-label="Day">${signedPercent(quote?.regularMarketChangePercent)}</span>
-            ${isForex ? `<button type="button" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol} chart">Chart</button>` : `<button type="button" data-action="trade-asset" data-symbol="${item.symbol}" title="Buy ${item.symbol}">Buy</button>`}
+            ${chartOnly ? `<button type="button" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol} chart">Chart</button>` : `<button type="button" data-action="trade-asset" data-symbol="${item.symbol}" title="Buy ${item.symbol}">Buy</button>`}
             <button type="button" data-action="remove-watch" data-symbol="${item.symbol}" title="Remove ${item.symbol}">Remove</button>
           </div>
         `;
@@ -1121,11 +1136,12 @@ function renderStockTab(symbol, holding, stats) {
 function renderTradePanel(symbol, holding, stats, full = false) {
   const summary = portfolioSummary();
   const portfolio = activePortfolio();
-  if (portfolio?.account_type === "forex") {
+  if (portfolio?.account_type === "forex" || portfolio?.account_type === "crypto") {
+    const label = portfolio.account_type === "forex" ? "Forex" : "Crypto";
     return `
       <section class="trade-ticket ${full ? "full" : ""}">
-        <h3>Forex paper trading</h3>
-        <p>Quotes and charts are connected through Twelve Data. Lot size, pips, leverage, and margin simulation will be added next.</p>
+        <h3>${label} paper trading</h3>
+        <p>Quotes and charts are connected through Twelve Data. ${portfolio.account_type === "forex" ? "Lot size, pips, leverage, and margin simulation" : "Coin units, fees, and exchange-style order simulation"} will be added next.</p>
         <button type="button" data-stock-tab="chart">View chart</button>
       </section>
     `;
