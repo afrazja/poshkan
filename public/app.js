@@ -1,5 +1,6 @@
 const STARTING_CASH = 100000;
 const POPULAR_STOCKS = ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD"];
+const POPULAR_FOREX = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "AUD/USD", "USD/CHF"];
 const PERIODS = {
   "1d": "1D",
   "5d": "5D",
@@ -85,8 +86,25 @@ const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 
 function cleanSymbol(value) {
   return String(value || "")
     .toUpperCase()
-    .replace(/[^A-Z0-9.^-]/g, "")
-    .slice(0, 12);
+    .replace(/[^A-Z0-9.^/-]/g, "")
+    .slice(0, 16);
+}
+
+function normalizeForexSymbol(value) {
+  const clean = cleanSymbol(value);
+  if (clean.includes("/")) return clean;
+  const letters = clean.replace(/[^A-Z]/g, "");
+  return letters.length === 6 ? `${letters.slice(0, 3)}/${letters.slice(3)}` : clean;
+}
+
+function assetLabel(type) {
+  if (type === "forex") return "Forex";
+  if (type === "crypto") return "Crypto coming soon";
+  return "US Stocks";
+}
+
+function assetTypeForPortfolio(portfolio = activePortfolio()) {
+  return portfolio?.account_type === "forex" ? "forex" : "us_stock";
 }
 
 function money(value) {
@@ -224,10 +242,10 @@ async function loadConfig() {
   state.supabase = window.supabase.createClient(state.config.supabaseUrl, state.config.supabaseAnonKey);
 }
 
-async function loadQuotes(symbols = allSymbols()) {
-  const clean = [...new Set(symbols.map(cleanSymbol).filter(Boolean))];
+async function loadQuotes(symbols = allSymbols(), assetType = assetTypeForPortfolio()) {
+  const clean = [...new Set(symbols.map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol))).filter(Boolean))];
   if (!clean.length) return;
-  const data = await fetchJson(`/api/quotes?symbols=${encodeURIComponent(clean.join(","))}`);
+  const data = await fetchJson(`/api/quotes?symbols=${encodeURIComponent(clean.join(","))}&type=${encodeURIComponent(assetType)}`);
   (data.quotes || []).forEach((quote) => state.quotes.set(cleanSymbol(quote.symbol), quote));
   if (data.invalids?.length) {
     setStatus(`${data.invalids.length} symbol could not be refreshed.`, "warning");
@@ -241,9 +259,10 @@ async function searchAssets(query) {
     render();
     return;
   }
-  const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}`);
+  const assetType = assetTypeForPortfolio();
+  const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(assetType)}`);
   state.searchResults = data.suggestions || [];
-  await loadQuotes(state.searchResults.map((item) => item.symbol));
+  await loadQuotes(state.searchResults.map((item) => item.symbol), assetType);
   render();
 }
 
@@ -298,7 +317,9 @@ async function loadCloudData() {
     ? preferred
     : state.portfolios[0]?.id || null;
   elements.accountName.textContent = profile?.display_name || state.session.user.email || "Account";
-  await loadQuotes(state.portfolios.flatMap((portfolio) => allSymbols(portfolio.id)));
+  await Promise.all(
+    state.portfolios.map((portfolio) => loadQuotes(allSymbols(portfolio.id), assetTypeForPortfolio(portfolio)))
+  );
 }
 
 async function saveLastActivePortfolio() {
@@ -347,22 +368,22 @@ async function createPortfolio(event) {
   const portfolio = data;
   const starting = parseStartingHoldings(elements.portfolioStartingHoldings.value);
   if (starting.length) {
-    const symbols = starting.map((item) => item.symbol);
-    await loadQuotes(symbols);
+    const symbols = starting.map((item) => (accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol));
+    await loadQuotes(symbols, accountType);
     const holdings = starting.map((item) => ({
       portfolio_id: portfolio.id,
       user_id: userId,
-      symbol: item.symbol,
-      asset_type: "us_stock",
-      name: quoteFor(item.symbol)?.shortName || item.symbol,
+      symbol: accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol,
+      asset_type: accountType,
+      name: quoteFor(accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol)?.shortName || item.symbol,
       quantity: item.quantity,
       avg_cost: item.avgCost
     }));
     const trades = starting.map((item) => ({
       portfolio_id: portfolio.id,
       user_id: userId,
-      symbol: item.symbol,
-      asset_type: "us_stock",
+      symbol: accountType === "forex" ? normalizeForexSymbol(item.symbol) : item.symbol,
+      asset_type: accountType,
       trade_type: "starting_position",
       quantity: item.quantity,
       price: item.avgCost,
@@ -401,8 +422,9 @@ async function archivePortfolio(id) {
 async function addToWatchlist(asset = state.selectedSearchAsset) {
   const portfolio = activePortfolio();
   if (!portfolio || !asset) return;
-  const symbol = cleanSymbol(asset.symbol);
-  if (portfolio.account_type !== "us_stock") return;
+  const assetType = assetTypeForPortfolio(portfolio);
+  const symbol = assetType === "forex" ? normalizeForexSymbol(asset.symbol) : cleanSymbol(asset.symbol);
+  if (portfolio.account_type === "crypto") return;
   if (portfolioHoldings().some((holding) => holding.symbol === symbol)) {
     setStatus(`${symbol} is already in holdings.`, "warning");
     return;
@@ -415,7 +437,7 @@ async function addToWatchlist(asset = state.selectedSearchAsset) {
     portfolio_id: portfolio.id,
     user_id: state.session.user.id,
     symbol,
-    asset_type: "us_stock",
+    asset_type: assetType,
     name: asset.name || quoteFor(symbol)?.shortName || symbol,
     sort_order: portfolioWatchlist().length
   });
@@ -429,11 +451,15 @@ async function addToWatchlist(asset = state.selectedSearchAsset) {
 
 async function setStartingHolding(symbol, quantity, avgCost) {
   const portfolio = activePortfolio();
+  if (portfolio?.account_type === "forex") {
+    setStatus("Forex starting positions are tracked in watchlist first. Lot and pip position rules are next.", "warning");
+    return;
+  }
   const clean = cleanSymbol(symbol);
   const qty = Math.max(0, Number(quantity) || 0);
   const cost = Math.max(0, Number(avgCost) || 0);
   if (!portfolio || !clean || qty <= 0) return;
-  await loadQuotes([clean]);
+  await loadQuotes([clean], assetTypeForPortfolio(portfolio));
   const userId = state.session.user.id;
   const { error } = await state.supabase.from("portfolio_holdings").upsert(
     {
@@ -468,13 +494,17 @@ async function setStartingHolding(symbol, quantity, avgCost) {
 
 async function executeTrade(symbol, side, quantity) {
   const portfolio = activePortfolio();
+  if (portfolio?.account_type === "forex") {
+    setStatus("Forex paper orders need lot size, pip, leverage, and margin rules. This stage adds Forex quotes and charts first.", "warning");
+    return;
+  }
   const clean = cleanSymbol(symbol);
   const qty = Math.max(0, Number(quantity) || 0);
   if (!portfolio || !clean || !qty) {
     setStatus("Enter a symbol and quantity.", "warning");
     return;
   }
-  await loadQuotes([clean]);
+  await loadQuotes([clean], assetTypeForPortfolio(portfolio));
   const quote = quoteFor(clean);
   const price = Number(quote?.regularMarketPrice);
   if (!Number.isFinite(price) || price <= 0) {
@@ -571,18 +601,18 @@ async function deleteWatchlistSymbol(symbol) {
 }
 
 async function loadStockDetail(symbol) {
-  const clean = cleanSymbol(symbol);
+  const clean = assetTypeForPortfolio() === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol);
   state.selectedSymbol = clean;
   state.page = "stock";
   state.stockTab = "chart";
-  await loadQuotes([clean]);
+  await loadQuotes([clean], assetTypeForPortfolio());
   await loadChart(clean);
   render();
 }
 
 async function loadChart(symbol = state.selectedSymbol) {
   if (!symbol) return;
-  const data = await fetchJson(`/api/history?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(state.chartPeriod)}`);
+  const data = await fetchJson(`/api/history?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(state.chartPeriod)}&type=${encodeURIComponent(assetTypeForPortfolio())}`);
   state.chartPoints = data.history || [];
 }
 
@@ -602,7 +632,7 @@ async function loadPerformance() {
   const amount = Math.max(1, Number.parseInt(state.compareAmount, 10) || 1);
   const unit = ["hours", "days", "months"].includes(state.compareUnit) ? state.compareUnit : "days";
   const data = await fetchJson(
-    `/api/performance?symbols=${encodeURIComponent(symbols.join(","))}&amount=${encodeURIComponent(amount)}&unit=${encodeURIComponent(unit)}&heldSince=${encodeURIComponent(heldSince)}`
+    `/api/performance?symbols=${encodeURIComponent(symbols.join(","))}&amount=${encodeURIComponent(amount)}&unit=${encodeURIComponent(unit)}&heldSince=${encodeURIComponent(heldSince)}&type=${encodeURIComponent(assetTypeForPortfolio(portfolio))}`
   );
   state.compareAmount = amount;
   state.compareUnit = unit;
@@ -708,7 +738,7 @@ function portfolioCard(portfolio) {
   return `
     <article class="portfolio-card" data-portfolio-id="${portfolio.id}">
       <div>
-        <span class="pill">${portfolio.account_type === "crypto" ? "Crypto" : "US Stocks"}</span>
+        <span class="pill">${assetLabel(portfolio.account_type)}</span>
         <h3>${escapeHtml(portfolio.name)}</h3>
         <p>${portfolioHoldings(portfolio.id).length} holdings • ${portfolioWatchlist(portfolio.id).length} watchlist</p>
       </div>
@@ -744,7 +774,7 @@ function renderPortfolios() {
         <h2>Your paper accounts</h2>
         <span>Open a portfolio, create a new strategy, or mirror an outside account with starting holdings.</span>
       </div>
-      <button class="primary-action" type="button" data-action="new-portfolio" title="Create stock or crypto paper portfolio">+ New Portfolio</button>
+      <button class="primary-action" type="button" data-action="new-portfolio" title="Create stock, forex, or crypto paper portfolio">+ New Portfolio</button>
     </div>
     <section class="portfolio-grid">
       ${state.portfolios.map(portfolioCard).join("")}
@@ -768,7 +798,7 @@ function renderPortfolio() {
     <div class="page-head portfolio-context">
       <div>
         <button class="text-link" type="button" data-nav="portfolios">All portfolios</button>
-        <p class="eyebrow">${portfolio.account_type === "crypto" ? "Crypto coming soon" : "US Stocks"}</p>
+        <p class="eyebrow">${assetLabel(portfolio.account_type)}</p>
         <h2>${escapeHtml(portfolio.name)}</h2>
       </div>
       <div class="portfolio-actions">
@@ -827,19 +857,22 @@ function renderViewMore(total, tab) {
 }
 
 function renderSearchPanel() {
+  const portfolio = activePortfolio();
+  const isForex = portfolio?.account_type === "forex";
+  const popular = isForex ? POPULAR_FOREX : POPULAR_STOCKS;
   return `
     <section class="search-panel">
       <div>
-        <h3>Add stock</h3>
-        <p>Search by company name or symbol. Choose the result before adding or trading.</p>
+        <h3>${isForex ? "Add forex pair" : "Add stock"}</h3>
+        <p>${isForex ? "Search a currency pair such as EUR/USD or GBP/USD." : "Search by company name or symbol. Choose the result before adding or trading."}</p>
       </div>
       <form id="asset-search-form" class="search-form">
-        <input id="asset-search-input" placeholder="Search Apple, Tesla, NVDA..." autocomplete="off" />
-        <button type="submit" title="Search stock">Search</button>
+        <input id="asset-search-input" placeholder="${isForex ? "Search EUR/USD, GBP/USD..." : "Search Apple, Tesla, NVDA..."}" autocomplete="off" />
+        <button type="submit" title="${isForex ? "Search forex pair" : "Search stock"}">Search</button>
       </form>
       <div class="popular-row">
         <span>Popular to explore</span>
-        ${POPULAR_STOCKS.map((symbol) => `<button type="button" data-search-symbol="${symbol}" title="Search ${symbol}">${symbol}</button>`).join("")}
+        ${popular.map((symbol) => `<button type="button" data-search-symbol="${symbol}" title="Search ${symbol}">${symbol}</button>`).join("")}
       </div>
       <div class="search-results">
         ${state.searchResults.map(renderSearchResult).join("")}
@@ -850,6 +883,7 @@ function renderSearchPanel() {
 
 function renderSearchResult(asset) {
   const quote = quoteFor(asset.symbol);
+  const isForex = assetTypeForPortfolio() === "forex";
   return `
     <article class="search-result">
       <button type="button" class="result-main" data-action="open-stock" data-symbol="${asset.symbol}" title="Open ${asset.symbol}">
@@ -862,7 +896,7 @@ function renderSearchResult(asset) {
         <span class="${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}">${signedPercent(quote?.regularMarketChangePercent)}</span>
       </div>
       <button type="button" data-action="watch-asset" data-symbol="${asset.symbol}" title="Add ${asset.symbol} to watchlist">Watch</button>
-      <button type="button" data-action="trade-asset" data-symbol="${asset.symbol}" title="Buy ${asset.symbol} with paper cash">Buy</button>
+      ${isForex ? `<button type="button" data-action="open-stock" data-symbol="${asset.symbol}" title="Open ${asset.symbol} chart">Chart</button>` : `<button type="button" data-action="trade-asset" data-symbol="${asset.symbol}" title="Buy ${asset.symbol} with paper cash">Buy</button>`}
     </article>
   `;
 }
@@ -892,8 +926,9 @@ function sortRows(rows, scope, getValue) {
 
 function renderHoldingsTable(holdings, limit = Infinity) {
   if (!holdings.length) {
-    return `<section class="empty-list"><h3>No holdings yet</h3><p>Search a stock to buy it, or add starting holdings to mirror another account.</p></section>`;
+    return `<section class="empty-list"><h3>No holdings yet</h3><p>Search ${assetTypeForPortfolio() === "forex" ? "a forex pair" : "a stock"} to add it, or add starting holdings to mirror another account.</p></section>`;
   }
+  const isForex = assetTypeForPortfolio() === "forex";
   const rows = sortRows(
     holdings.map((holding) => {
       const stats = holdingStats(holding);
@@ -913,7 +948,7 @@ function renderHoldingsTable(holdings, limit = Infinity) {
   return `
     <div class="data-table holdings-table">
       <div class="table-row table-head">
-        ${sortLabel("holdings", "symbol", "Stock")}
+        ${sortLabel("holdings", "symbol", isForex ? "Pair" : "Stock")}
         ${sortLabel("holdings", "price", "Price")}
         ${sortLabel("holdings", "shares", "Shares")}
         ${sortLabel("holdings", "value", "Value")}
@@ -938,7 +973,7 @@ function renderHoldingsTable(holdings, limit = Infinity) {
 
 function renderWatchlistTable(items, limit = Infinity) {
   if (!items.length) {
-    return `<section class="empty-list"><h3>No watchlist stocks</h3><p>Use search to follow stocks before buying them.</p></section>`;
+    return `<section class="empty-list"><h3>No watchlist ${assetTypeForPortfolio() === "forex" ? "pairs" : "stocks"}</h3><p>Use search to follow ${assetTypeForPortfolio() === "forex" ? "currency pairs" : "stocks"} before trading them.</p></section>`;
   }
   const rows = sortRows(
     items.map((item) => {
@@ -952,10 +987,11 @@ function renderWatchlistTable(items, limit = Infinity) {
       return row.item.symbol;
     }
   ).slice(0, limit);
+  const isForex = assetTypeForPortfolio() === "forex";
   return `
     <div class="data-table watchlist-table">
       <div class="table-row table-head">
-        ${sortLabel("watchlist", "symbol", "Stock")}
+        ${sortLabel("watchlist", "symbol", isForex ? "Pair" : "Stock")}
         ${sortLabel("watchlist", "price", "Price")}
         ${sortLabel("watchlist", "dayPercent", "Day")}
         <span></span><span></span>
@@ -968,7 +1004,7 @@ function renderWatchlistTable(items, limit = Infinity) {
             </button>
             <span class="metric" data-label="Price">${money(quote?.regularMarketPrice)}</span>
             <span class="metric ${Number(quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}" data-label="Day">${signedPercent(quote?.regularMarketChangePercent)}</span>
-            <button type="button" data-action="trade-asset" data-symbol="${item.symbol}" title="Buy ${item.symbol}">Buy</button>
+            ${isForex ? `<button type="button" data-action="open-stock" data-symbol="${item.symbol}" title="Open ${item.symbol} chart">Chart</button>` : `<button type="button" data-action="trade-asset" data-symbol="${item.symbol}" title="Buy ${item.symbol}">Buy</button>`}
             <button type="button" data-action="remove-watch" data-symbol="${item.symbol}" title="Remove ${item.symbol}">Remove</button>
           </div>
         `;
@@ -1056,6 +1092,16 @@ function renderStockTab(symbol, holding, stats) {
 
 function renderTradePanel(symbol, holding, stats, full = false) {
   const summary = portfolioSummary();
+  const portfolio = activePortfolio();
+  if (portfolio?.account_type === "forex") {
+    return `
+      <section class="trade-ticket ${full ? "full" : ""}">
+        <h3>Forex paper trading</h3>
+        <p>Quotes and charts are connected through Twelve Data. Lot size, pips, leverage, and margin simulation will be added next.</p>
+        <button type="button" data-stock-tab="chart">View chart</button>
+      </section>
+    `;
+  }
   return `
     <section class="trade-ticket ${full ? "full" : ""}">
       <h3>Paper trade</h3>
@@ -1394,7 +1440,7 @@ function renderAi() {
         const setting = state.aiSettings.get(portfolio.id) || {};
         return `
           <article class="ai-card">
-            <div><h3>${escapeHtml(portfolio.name)}</h3><span>${portfolio.account_type === "crypto" ? "Crypto coming soon" : "US Stocks"}</span></div>
+            <div><h3>${escapeHtml(portfolio.name)}</h3><span>${assetLabel(portfolio.account_type)}</span></div>
             <label class="switch"><input type="checkbox" data-ai-field="enabled" data-id="${portfolio.id}" ${setting.enabled ? "checked" : ""} /><span>Allow Claude trades</span></label>
             <label class="switch"><input type="checkbox" data-ai-field="allow_buy" data-id="${portfolio.id}" ${setting.allow_buy !== false ? "checked" : ""} /><span>Buy allowed</span></label>
             <label class="switch"><input type="checkbox" data-ai-field="allow_sell" data-id="${portfolio.id}" ${setting.allow_sell !== false ? "checked" : ""} /><span>Sell allowed</span></label>
@@ -1557,7 +1603,7 @@ document.addEventListener("click", async (event) => {
       state.selectedSymbol = action.dataset.symbol;
       state.page = "stock";
       state.stockTab = "trade";
-      await loadQuotes([state.selectedSymbol]);
+      await loadQuotes([state.selectedSymbol], assetTypeForPortfolio());
       render();
     }
     if (act === "remove-watch") await deleteWatchlistSymbol(action.dataset.symbol);

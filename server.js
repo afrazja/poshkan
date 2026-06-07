@@ -32,6 +32,19 @@ const STOCK_NAMES = {
   JPM: "JPMorgan Chase & Co."
 };
 
+const FOREX_NAMES = {
+  "EUR/USD": "Euro / US Dollar",
+  "GBP/USD": "British Pound / US Dollar",
+  "USD/JPY": "US Dollar / Japanese Yen",
+  "USD/CAD": "US Dollar / Canadian Dollar",
+  "AUD/USD": "Australian Dollar / US Dollar",
+  "NZD/USD": "New Zealand Dollar / US Dollar",
+  "USD/CHF": "US Dollar / Swiss Franc",
+  "EUR/GBP": "Euro / British Pound",
+  "EUR/JPY": "Euro / Japanese Yen",
+  "GBP/JPY": "British Pound / Japanese Yen"
+};
+
 const HISTORY_PERIODS = {
   "1h": { label: "1H", range: "1d", interval: "1m", points: 60 },
   "4h": { label: "4H", range: "1d", interval: "5m", points: 48 },
@@ -55,8 +68,19 @@ const json = (res, status, payload) => {
 const cleanSymbol = (value) =>
   String(value || "")
     .toUpperCase()
-    .replace(/[^A-Z0-9.^-]/g, "")
-    .slice(0, 12);
+    .replace(/[^A-Z0-9.^/-]/g, "")
+    .slice(0, 16);
+
+function normalizeForexSymbol(value) {
+  const clean = cleanSymbol(value);
+  if (clean.includes("/")) return clean;
+  const letters = clean.replace(/[^A-Z]/g, "");
+  return letters.length === 6 ? `${letters.slice(0, 3)}/${letters.slice(3)}` : clean;
+}
+
+function assetTypeFromQuery(query) {
+  return query.get("type") === "forex" || query.get("assetType") === "forex" ? "forex" : "us_stock";
+}
 
 const getQuery = (req) => new URL(req.url, `http://${req.headers.host}`).searchParams;
 
@@ -271,6 +295,33 @@ function demoQuote(symbol, index = 0, requestedSymbol = symbol) {
   };
 }
 
+function demoForexQuote(symbol, index = 0) {
+  const pair = normalizeForexSymbol(symbol);
+  const seed = [...pair].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const base = pair.endsWith("/JPY") ? 100 + (seed % 60) : 0.7 + (seed % 80) / 100;
+  const wave = Math.sin(Date.now() / 900000 + index) * (pair.endsWith("/JPY") ? 0.32 : 0.0042);
+  const price = Number((base + wave).toFixed(pair.endsWith("/JPY") ? 3 : 5));
+  const change = Number((wave / 2).toFixed(pair.endsWith("/JPY") ? 3 : 5));
+  const previous = price - change;
+  return {
+    symbol: pair,
+    requestedSymbol: symbol,
+    shortName: FOREX_NAMES[pair] || `${pair} Forex Pair`,
+    regularMarketPrice: price,
+    regularMarketChange: change,
+    regularMarketChangePercent: previous ? Number(((change / previous) * 100).toFixed(2)) : 0,
+    regularMarketTime: Math.floor(Date.now() / 1000),
+    regularMarketVolume: null,
+    regularMarketDayHigh: Number((price + Math.abs(change) * 1.8).toFixed(pair.endsWith("/JPY") ? 3 : 5)),
+    regularMarketDayLow: Number((price - Math.abs(change) * 1.8).toFixed(pair.endsWith("/JPY") ? 3 : 5)),
+    marketState: "FOREX",
+    source: "Demo forex fallback",
+    cacheStatus: "demo",
+    fetchedAt: Date.now(),
+    dataAgeSeconds: 0
+  };
+}
+
 function stampQuote(quote, cacheStatus, fetchedAt = Date.now()) {
   return {
     ...quote,
@@ -278,6 +329,63 @@ function stampQuote(quote, cacheStatus, fetchedAt = Date.now()) {
     fetchedAt,
     dataAgeSeconds: Math.max(0, Math.round((Date.now() - fetchedAt) / 1000))
   };
+}
+
+function twelveDataKey() {
+  return process.env.TWELVE_DATA_API_KEY || "";
+}
+
+async function fetchTwelveData(path, params) {
+  const apiKey = twelveDataKey();
+  if (!apiKey) throw new Error("TWELVE_DATA_API_KEY is not configured");
+  const query = new URLSearchParams({ ...params, apikey: apiKey });
+  const data = await fetchJson(`https://api.twelvedata.com/${path}?${query}`);
+  if (data?.status === "error" || data?.code >= 400) {
+    throw new Error(data.message || "Twelve Data returned an error");
+  }
+  return data;
+}
+
+async function forexQuoteForSymbol(symbol) {
+  const pair = normalizeForexSymbol(symbol);
+  const cached = quoteCache.get(`forex:${pair}`);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt <= QUOTE_CACHE_TTL_MS) {
+    return stampQuote(cached.quote, "cached", cached.fetchedAt);
+  }
+
+  try {
+    const data = await fetchTwelveData("quote", { symbol: pair });
+    const price = Number(data.close || data.price || data.previous_close);
+    if (!Number.isFinite(price)) throw new Error(`No usable forex quote for ${pair}`);
+    const change = Number(data.change);
+    const percent = Number(data.percent_change);
+    const quote = {
+      symbol: pair,
+      requestedSymbol: symbol,
+      shortName: data.name || FOREX_NAMES[pair] || `${pair} Forex Pair`,
+      regularMarketPrice: price,
+      regularMarketChange: Number.isFinite(change) ? change : null,
+      regularMarketChangePercent: Number.isFinite(percent) ? percent : null,
+      regularMarketTime: data.timestamp || Math.floor(Date.now() / 1000),
+      regularMarketVolume: null,
+      regularMarketDayHigh: Number(data.high) || null,
+      regularMarketDayLow: Number(data.low) || null,
+      marketState: "FOREX",
+      source: "Twelve Data",
+      cacheStatus: "fresh",
+      fetchedAt: Date.now(),
+      dataAgeSeconds: 0
+    };
+    const fetchedAt = Date.now();
+    quoteCache.set(`forex:${pair}`, { quote: stampQuote(quote, "fresh", fetchedAt), fetchedAt });
+    return stampQuote(quote, "fresh", fetchedAt);
+  } catch (error) {
+    if (cached && now - cached.fetchedAt <= QUOTE_STALE_TTL_MS) {
+      return stampQuote(cached.quote, "stale", cached.fetchedAt);
+    }
+    throw error;
+  }
 }
 
 function quoteFromChart(symbol, data, requestedSymbol = symbol) {
@@ -345,9 +453,37 @@ async function resolveYahooSymbol(symbol) {
 }
 
 async function searchHandler(req, res) {
-  const query = String(getQuery(req).get("q") || "").trim();
+  const params = getQuery(req);
+  const query = String(params.get("q") || "").trim();
+  const assetType = assetTypeFromQuery(params);
   if (!query) {
     return json(res, 200, { suggestions: [] });
+  }
+
+  if (assetType === "forex") {
+    const pair = normalizeForexSymbol(query);
+    const localSuggestions = Object.entries(FOREX_NAMES)
+      .filter(([symbol, name]) => symbol.includes(pair) || symbol.replace("/", "").includes(pair.replace("/", "")) || name.toUpperCase().includes(query.toUpperCase()))
+      .slice(0, 8)
+      .map(([symbol, name]) => ({ symbol, name, exchange: "Forex", quoteType: "FOREX" }));
+    try {
+      const data = await fetchTwelveData("symbol_search", { symbol: pair, outputsize: 8 });
+      const suggestions = (Array.isArray(data.data) ? data.data : [])
+        .filter((item) => item.instrument_type === "Forex Pair" || item.type === "Physical Currency")
+        .map((item) => ({
+          symbol: normalizeForexSymbol(item.symbol),
+          name: item.instrument_name || FOREX_NAMES[normalizeForexSymbol(item.symbol)] || item.symbol,
+          exchange: item.exchange || "Forex",
+          quoteType: "FOREX"
+        }))
+        .filter((item) => item.symbol);
+      return json(res, 200, { suggestions: suggestions.length ? suggestions : localSuggestions });
+    } catch (error) {
+      return json(res, 200, {
+        warning: error.message,
+        suggestions: localSuggestions.length ? localSuggestions : [{ symbol: pair, name: FOREX_NAMES[pair] || `${pair} Forex Pair`, exchange: "Forex", quoteType: "FOREX" }]
+      });
+    }
   }
 
   try {
@@ -457,6 +593,20 @@ function getHistoryConfig(query) {
   };
 }
 
+function twelveInterval(interval) {
+  return (
+    {
+      "1m": "1min",
+      "5m": "5min",
+      "15m": "15min",
+      "30m": "30min",
+      "1h": "1h",
+      "1d": "1day",
+      "1wk": "1week"
+    }[interval] || "1day"
+  );
+}
+
 function demoHistory(symbol, config = HISTORY_PERIODS["1d"]) {
   const seed = [...symbol].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const start = 80 + (seed % 170);
@@ -485,6 +635,42 @@ function demoHistory(symbol, config = HISTORY_PERIODS["1d"]) {
       close: Number(close.toFixed(2)),
       price: Number(close.toFixed(2)),
       volume: Math.round(400000 + (seed % 700) * 900 + Math.abs(Math.sin(index / 3 + seed)) * 1200000)
+    };
+  });
+}
+
+function demoForexHistory(symbol, config = HISTORY_PERIODS["1d"]) {
+  const pair = normalizeForexSymbol(symbol);
+  const seed = [...pair].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const start = pair.endsWith("/JPY") ? 110 + (seed % 40) : 0.8 + (seed % 90) / 100;
+  const now = Math.floor(Date.now() / 1000);
+  const count = config.points || 64;
+  const stepSeconds =
+    {
+      "1m": 60,
+      "5m": 300,
+      "15m": 900,
+      "30m": 1800,
+      "1h": 3600,
+      "1day": 86400,
+      "1week": 604800
+    }[config.interval] || 300;
+  const decimals = pair.endsWith("/JPY") ? 3 : 5;
+
+  return Array.from({ length: count }, (_, index) => {
+    const drift = Math.sin(index / 5 + seed) * (pair.endsWith("/JPY") ? 0.22 : 0.0032);
+    const close = start + drift + index * (pair.endsWith("/JPY") ? 0.004 : 0.00004);
+    const open = close - Math.sin(index / 4 + seed) * (pair.endsWith("/JPY") ? 0.06 : 0.0008);
+    const high = Math.max(open, close) + (pair.endsWith("/JPY") ? 0.04 : 0.0005);
+    const low = Math.min(open, close) - (pair.endsWith("/JPY") ? 0.04 : 0.0005);
+    return {
+      time: now - (count - 1 - index) * stepSeconds,
+      open: Number(open.toFixed(decimals)),
+      high: Number(high.toFixed(decimals)),
+      low: Number(low.toFixed(decimals)),
+      close: Number(close.toFixed(decimals)),
+      price: Number(close.toFixed(decimals)),
+      volume: null
     };
   });
 }
@@ -544,6 +730,52 @@ async function performanceForSymbol(symbol, config) {
   };
 }
 
+async function forexPerformanceForSymbol(symbol, config) {
+  const pair = normalizeForexSymbol(symbol);
+  const data = await fetchTwelveData("time_series", {
+    symbol: pair,
+    interval: twelveInterval(config.interval),
+    outputsize: String(config.points || 120),
+    order: "ASC"
+  });
+  const points = (Array.isArray(data.values) ? data.values : [])
+    .map((item) => ({ time: Math.floor(new Date(item.datetime).getTime() / 1000), price: Number(item.close) }))
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price));
+  if (points.length < 2) throw new Error(`Not enough performance data for ${pair}`);
+  const first = points[0];
+  const last = points[points.length - 1];
+  const change = last.price - first.price;
+  const changePercent = first.price ? (change / first.price) * 100 : 0;
+  return {
+    symbol: pair,
+    startPrice: Number(first.price.toFixed(6)),
+    endPrice: Number(last.price.toFixed(6)),
+    change: Number(change.toFixed(6)),
+    changePercent: Number(changePercent.toFixed(4)),
+    startTime: first.time,
+    endTime: last.time,
+    effectiveLabel: config.effectiveLabel || ""
+  };
+}
+
+function demoForexPerformance(symbol, config) {
+  const history = demoForexHistory(symbol, config);
+  const first = history[0];
+  const last = history[history.length - 1];
+  const change = last.price - first.price;
+  const changePercent = first.price ? (change / first.price) * 100 : 0;
+  return {
+    symbol: normalizeForexSymbol(symbol),
+    startPrice: first.price,
+    endPrice: last.price,
+    change: Number(change.toFixed(6)),
+    changePercent: Number(changePercent.toFixed(4)),
+    startTime: first.time,
+    endTime: last.time,
+    effectiveLabel: config.effectiveLabel || ""
+  };
+}
+
 function holdingPeriodLabel(seconds) {
   const days = Math.max(1, Math.ceil(seconds / 86400));
   if (days < 31) return `${days} day${days === 1 ? "" : "s"}`;
@@ -552,19 +784,21 @@ function holdingPeriodLabel(seconds) {
 }
 
 async function quotesHandler(req, res) {
-  const symbols = (getQuery(req).get("symbols") || "AAPL,MSFT,NVDA")
+  const query = getQuery(req);
+  const assetType = assetTypeFromQuery(query);
+  const symbols = (query.get("symbols") || (assetType === "forex" ? "EUR/USD,GBP/USD,USD/JPY" : "AAPL,MSFT,NVDA"))
     .split(",")
-    .map(cleanSymbol)
+    .map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol)))
     .filter(Boolean)
     .slice(0, MAX_QUOTE_SYMBOLS);
 
   if (!symbols.length) {
-    return json(res, 400, { error: "Add at least one stock symbol." });
+    return json(res, 400, { error: `Add at least one ${assetType === "forex" ? "forex pair" : "stock symbol"}.` });
   }
 
   try {
     const quoteResults = await Promise.allSettled(
-      symbols.map((symbol) => quoteForSymbol(symbol))
+      symbols.map((symbol) => (assetType === "forex" ? forexQuoteForSymbol(symbol) : quoteForSymbol(symbol)))
     );
 
     const invalids = [];
@@ -579,7 +813,7 @@ async function quotesHandler(req, res) {
         });
         return [];
       }
-      return [demoQuote(symbols[index], index)];
+      return [assetType === "forex" ? demoForexQuote(symbols[index], index) : demoQuote(symbols[index], index)];
     });
     const failed = quoteResults.filter((result) => result.status === "rejected" && !result.reason?.invalidSymbol).length;
     const cached = quotes.filter((quote) => quote.cacheStatus === "cached").length;
@@ -603,16 +837,17 @@ async function quotesHandler(req, res) {
       source: "demo",
       warning: error.message,
       reliability: { live: 0, cached: 0, stale: 0, demo: symbols.length },
-      quotes: symbols.map(demoQuote)
+      quotes: symbols.map((symbol, index) => (assetType === "forex" ? demoForexQuote(symbol, index) : demoQuote(symbol, index)))
     });
   }
 }
 
 async function performanceHandler(req, res) {
   const query = getQuery(req);
+  const assetType = assetTypeFromQuery(query);
   const symbols = (query.get("symbols") || "")
     .split(",")
-    .map(cleanSymbol)
+    .map((symbol) => (assetType === "forex" ? normalizeForexSymbol(symbol) : cleanSymbol(symbol)))
     .filter(Boolean)
     .slice(0, MAX_QUOTE_SYMBOLS);
   const config = getCustomHistoryConfig(query.get("amount") || 4, query.get("unit") || "days");
@@ -643,7 +878,7 @@ async function performanceHandler(req, res) {
         effectiveConfig.interval = heldSeconds <= 5 * 86400 ? "5m" : heldSeconds <= 30 * 86400 ? "1h" : config.interval;
         effectiveConfig.effectiveLabel = holdingPeriodLabel(heldSeconds);
       }
-      return performanceForSymbol(symbol, effectiveConfig);
+      return assetType === "forex" ? forexPerformanceForSymbol(symbol, effectiveConfig) : performanceForSymbol(symbol, effectiveConfig);
     })
   );
   const performance = [];
@@ -653,6 +888,9 @@ async function performanceHandler(req, res) {
     if (result.status === "fulfilled") {
       performance.push(result.value);
     } else {
+      if (assetType === "forex") {
+        performance.push(demoForexPerformance(symbols[index], config));
+      }
       failed.push({ symbol: symbols[index], error: result.reason?.message || "Performance unavailable" });
     }
   });
@@ -667,7 +905,8 @@ async function performanceHandler(req, res) {
 
 async function historyHandler(req, res) {
   const query = getQuery(req);
-  const symbol = cleanSymbol(query.get("symbol"));
+  const assetType = assetTypeFromQuery(query);
+  const symbol = assetType === "forex" ? normalizeForexSymbol(query.get("symbol")) : cleanSymbol(query.get("symbol"));
   const config = getHistoryConfig(query);
 
   if (!symbol) {
@@ -675,6 +914,34 @@ async function historyHandler(req, res) {
   }
 
   try {
+    if (assetType === "forex") {
+      const data = await fetchTwelveData("time_series", {
+        symbol,
+        interval: twelveInterval(config.interval),
+        outputsize: String(config.points || 120),
+        order: "ASC"
+      });
+      const values = Array.isArray(data.values) ? data.values : [];
+      const history = values
+        .map((item) => ({
+          time: Math.floor(new Date(item.datetime).getTime() / 1000),
+          open: Number(item.open),
+          high: Number(item.high),
+          low: Number(item.low),
+          close: Number(item.close),
+          price: Number(item.close),
+          volume: null
+        }))
+        .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price));
+      return json(res, 200, {
+        source: "twelve-data",
+        symbol,
+        period: config.period,
+        periodLabel: config.label,
+        history: history.length ? history : demoForexHistory(symbol, config)
+      });
+    }
+
     const chartParams = config.custom
       ? `period1=${config.period1}&period2=${config.period2}&interval=${config.interval}`
       : `range=${config.range}&interval=${config.interval}`;
@@ -718,7 +985,7 @@ async function historyHandler(req, res) {
       symbol,
       period: config.period,
       periodLabel: config.label,
-      history: demoHistory(symbol, config)
+      history: assetType === "forex" ? demoForexHistory(symbol, config) : demoHistory(symbol, config)
     });
   }
 }
@@ -1282,7 +1549,8 @@ function configHandler(req, res) {
   return json(res, 200, {
     supabaseUrl: process.env.SUPABASE_URL || "",
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
-    paperApiKeysEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+    paperApiKeysEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    twelveDataEnabled: Boolean(process.env.TWELVE_DATA_API_KEY)
   });
 }
 

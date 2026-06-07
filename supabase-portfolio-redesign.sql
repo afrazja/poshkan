@@ -11,7 +11,7 @@ create table if not exists public.portfolios (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
-  account_type text not null default 'us_stock' check (account_type in ('us_stock', 'crypto')),
+  account_type text not null default 'us_stock' check (account_type in ('us_stock', 'forex', 'crypto')),
   starting_cash numeric not null default 100000,
   cash numeric not null default 100000,
   base_currency text not null default 'USD',
@@ -24,7 +24,7 @@ create table if not exists public.portfolio_holdings (
   portfolio_id uuid not null references public.portfolios(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   symbol text not null,
-  asset_type text not null default 'us_stock' check (asset_type in ('us_stock', 'crypto')),
+  asset_type text not null default 'us_stock' check (asset_type in ('us_stock', 'forex', 'crypto')),
   name text,
   quantity numeric not null default 0,
   avg_cost numeric not null default 0,
@@ -37,7 +37,7 @@ create table if not exists public.portfolio_watchlist (
   portfolio_id uuid not null references public.portfolios(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   symbol text not null,
-  asset_type text not null default 'us_stock' check (asset_type in ('us_stock', 'crypto')),
+  asset_type text not null default 'us_stock' check (asset_type in ('us_stock', 'forex', 'crypto')),
   name text,
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
@@ -49,7 +49,7 @@ create table if not exists public.portfolio_trades (
   portfolio_id uuid not null references public.portfolios(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   symbol text not null,
-  asset_type text not null default 'us_stock' check (asset_type in ('us_stock', 'crypto')),
+  asset_type text not null default 'us_stock' check (asset_type in ('us_stock', 'forex', 'crypto')),
   trade_type text not null check (trade_type in ('buy', 'sell', 'starting_position', 'adjustment')),
   quantity numeric not null default 0,
   price numeric not null default 0,
@@ -82,6 +82,18 @@ create table if not exists public.portfolio_snapshots (
   created_at timestamptz not null default now(),
   unique (portfolio_id, snapshot_date)
 );
+
+alter table public.portfolios drop constraint if exists portfolios_account_type_check;
+alter table public.portfolios add constraint portfolios_account_type_check check (account_type in ('us_stock', 'forex', 'crypto'));
+
+alter table public.portfolio_holdings drop constraint if exists portfolio_holdings_asset_type_check;
+alter table public.portfolio_holdings add constraint portfolio_holdings_asset_type_check check (asset_type in ('us_stock', 'forex', 'crypto'));
+
+alter table public.portfolio_watchlist drop constraint if exists portfolio_watchlist_asset_type_check;
+alter table public.portfolio_watchlist add constraint portfolio_watchlist_asset_type_check check (asset_type in ('us_stock', 'forex', 'crypto'));
+
+alter table public.portfolio_trades drop constraint if exists portfolio_trades_asset_type_check;
+alter table public.portfolio_trades add constraint portfolio_trades_asset_type_check check (asset_type in ('us_stock', 'forex', 'crypto'));
 
 alter table public.profiles enable row level security;
 alter table public.portfolios enable row level security;
