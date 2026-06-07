@@ -75,7 +75,8 @@ const elements = {
   portfolioName: document.querySelector("#portfolio-name"),
   portfolioType: document.querySelector("#portfolio-type"),
   portfolioCash: document.querySelector("#portfolio-cash"),
-  portfolioStartingHoldings: document.querySelector("#portfolio-starting-holdings")
+  portfolioStartingHoldings: document.querySelector("#portfolio-starting-holdings"),
+  portfolioMessage: document.querySelector("#portfolio-message")
 };
 
 const SIGNED_IN_PAGES = new Set(["portfolios", "portfolio", "stock", "compare", "history", "ai", "settings"]);
@@ -136,13 +137,30 @@ function escapeHtml(value) {
 }
 
 function setStatus(message, type = "") {
-  const text = String(message || "");
-  const friendly =
-    text.includes("row-level security") || text.includes("violates row-level security")
-      ? "Database permissions need updating. Run supabase-portfolio-redesign.sql in Supabase, then try again."
-      : text;
-  elements.status.textContent = friendly;
+  elements.status.textContent = friendlyError(message);
   elements.status.className = `app-status ${type}`.trim();
+}
+
+function friendlyError(message) {
+  const text = String(message || "");
+  if (text.includes("row-level security") || text.includes("violates row-level security")) {
+    return "Database permissions need updating. Run supabase-portfolio-redesign.sql in Supabase, then try again.";
+  }
+  if (
+    text.includes("portfolios_account_type_check") ||
+    text.includes("portfolio_holdings_asset_type_check") ||
+    text.includes("portfolio_watchlist_asset_type_check") ||
+    text.includes("portfolio_trades_asset_type_check")
+  ) {
+    return "Database schema needs updating. Run supabase-portfolio-redesign.sql in Supabase so Forex accounts are allowed.";
+  }
+  return text;
+}
+
+function setPortfolioMessage(message, type = "") {
+  if (!elements.portfolioMessage) return;
+  elements.portfolioMessage.textContent = friendlyError(message);
+  elements.portfolioMessage.className = `form-message ${type}`.trim();
 }
 
 function throwIfSupabaseError(result) {
@@ -347,14 +365,22 @@ function parseStartingHoldings(text) {
 
 async function createPortfolio(event) {
   event.preventDefault();
+  const submit = elements.portfolioForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  setPortfolioMessage("Creating portfolio...", "success");
   const userId = state.session.user.id;
   const name = elements.portfolioName.value.trim();
   const accountType = elements.portfolioType.value;
   const cashInput = String(elements.portfolioCash.value).trim();
   const cash = cashInput === "" ? STARTING_CASH : Math.max(0, Number(cashInput) || 0);
-  if (!name) return;
+  if (!name) {
+    setPortfolioMessage("Enter a portfolio name.", "warning");
+    submit.disabled = false;
+    return;
+  }
   if (accountType === "crypto") {
-    setStatus("Crypto portfolios are planned for the next phase.", "warning");
+    setPortfolioMessage("Crypto portfolios are planned for the next phase.", "warning");
+    submit.disabled = false;
     return;
   }
 
@@ -406,6 +432,8 @@ async function createPortfolio(event) {
   await loadCloudData();
   await saveLastActivePortfolio();
   render();
+  setPortfolioMessage("");
+  submit.disabled = false;
 }
 
 async function archivePortfolio(id) {
@@ -1591,7 +1619,10 @@ document.addEventListener("click", async (event) => {
   if (!action) return;
   const act = action.dataset.action;
   try {
-    if (act === "new-portfolio") elements.dialog.showModal();
+    if (act === "new-portfolio") {
+      setPortfolioMessage("");
+      elements.dialog.showModal();
+    }
     if (act === "open-portfolio") selectPortfolio(action.dataset.id);
     if (act === "archive-portfolio") await archivePortfolio(action.dataset.id);
     if (act === "open-stock") await loadStockDetail(action.dataset.symbol);
@@ -1730,7 +1761,12 @@ document.addEventListener("click", (event) => {
 });
 
 elements.portfolioForm.addEventListener("submit", (event) => {
-  createPortfolio(event).catch((error) => setStatus(error.message, "warning"));
+  createPortfolio(event).catch((error) => {
+    setStatus(error.message, "warning");
+    setPortfolioMessage(error.message, "warning");
+    const submit = elements.portfolioForm.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = false;
+  });
 });
 
 boot();
