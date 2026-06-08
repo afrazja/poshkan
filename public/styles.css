@@ -428,6 +428,31 @@ h3 {
   margin-bottom: 16px;
 }
 
+.page-back-button {
+  position: sticky;
+  top: 10px;
+  z-index: 8;
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  margin: 0 0 10px;
+  place-items: center;
+  border: 1px solid rgba(238, 243, 245, 0.12);
+  border-radius: 999px;
+  background: rgba(15, 18, 20, 0.92);
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.page-back-button:hover,
+.page-back-button:focus-visible {
+  border-color: rgba(98, 200, 221, 0.55);
+  color: var(--accent);
+}
+
 .portfolio-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

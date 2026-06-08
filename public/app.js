@@ -736,13 +736,15 @@ async function updateAiSetting(portfolioId, patch) {
 }
 
 function navigate(page) {
-  if (page === "portfolio") {
-    state.page = activePortfolio() ? "portfolio" : "portfolios";
-    state.portfolioTab = "overview";
-  } else {
-    state.page = page;
-  }
+  state.page = page;
+  if (page === "portfolio" && !activePortfolio()) state.page = "portfolios";
   render();
+}
+
+function portfolioBackButton(label = "Back to portfolio") {
+  return activePortfolio()
+    ? `<button class="page-back-button" type="button" data-action="back-to-portfolio" title="${label}" aria-label="${label}">&larr;</button>`
+    : "";
 }
 
 function selectPortfolio(id) {
@@ -764,10 +766,7 @@ function render() {
   });
   elements.navButtons.forEach((button) => {
     const target = button.dataset.nav;
-    button.classList.toggle(
-      "active",
-      target === state.page || (target === "portfolio" && ["portfolio", "stock"].includes(state.page))
-    );
+    button.classList.toggle("active", target === state.page || (target === "portfolios" && state.page === "portfolio"));
   });
 
   renderPortfolios();
@@ -1402,6 +1401,7 @@ function renderCompare() {
     return `<button type="button" class="${active ? "active" : ""}" data-sort="${column}" title="Sort by ${label}">${label}${arrow}</button>`;
   };
   view.innerHTML = `
+    ${portfolioBackButton()}
     <div class="page-head">
       <div><p class="eyebrow">Compare</p><h2>${escapeHtml(portfolio.name)}</h2><span>Holdings and watchlist performance for the active portfolio.</span></div>
       <form class="compare-controls" id="compare-period-form">
@@ -1455,6 +1455,7 @@ function renderHistory() {
     portfolioTrades(portfolio.id).map((trade) => ({ ...trade, portfolioName: portfolio.name }))
   );
   view.innerHTML = `
+    ${portfolioBackButton()}
     <div class="page-head">
       <div><p class="eyebrow">History</p><h2>All paper trades</h2><span>Every buy, sell, and starting position across portfolios.</span></div>
     </div>
@@ -1630,10 +1631,7 @@ document.addEventListener("click", async (event) => {
   const nav = event.target.closest("[data-nav]");
   if (nav) {
     const target = nav.dataset.nav;
-    if (target === "portfolio") {
-      state.page = activePortfolio() ? "portfolio" : "portfolios";
-      state.portfolioTab = "overview";
-    } else if (target === "portfolios") state.page = "portfolios";
+    if (target === "portfolios") state.page = "portfolios";
     else state.page = target;
     if (target === "compare") await loadPerformance().catch((error) => setStatus(error.message, "warning"));
     if (target === "ai" || target === "settings") await loadApiKeys();
@@ -1665,7 +1663,8 @@ document.addEventListener("click", async (event) => {
     }
     if (act === "remove-watch") await deleteWatchlistSymbol(action.dataset.symbol);
     if (act === "back-to-portfolio") {
-      state.page = "portfolio";
+      state.page = activePortfolio() ? "portfolio" : "portfolios";
+      state.portfolioTab = "overview";
       render();
     }
     if (act === "refresh-performance") {
