@@ -1,7 +1,4 @@
 const STARTING_CASH = 100000;
-const POPULAR_STOCKS = ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD"];
-const POPULAR_FOREX = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "AUD/USD", "USD/CHF"];
-const POPULAR_CRYPTO = ["BTC/USD", "ETH/USD", "XRP/USD"];
 const PERIODS = {
   "1d": "1D",
   "5d": "5D",
@@ -892,13 +889,6 @@ function renderPortfolioContent(portfolio) {
 function renderPortfolioActionZone(content) {
   return `
     <section class="portfolio-action-zone">
-      <div class="action-zone-head">
-        <div>
-          <p class="eyebrow">Actions</p>
-          <h3>Add or research</h3>
-        </div>
-        <span>Search, add to watchlist, or start a paper trade.</span>
-      </div>
       ${content}
     </section>
   `;
@@ -932,22 +922,13 @@ function renderSearchPanel() {
   const portfolio = activePortfolio();
   const isForex = portfolio?.account_type === "forex";
   const isCrypto = portfolio?.account_type === "crypto";
-  const popular = isForex ? POPULAR_FOREX : isCrypto ? POPULAR_CRYPTO : POPULAR_STOCKS;
   const assetName = isForex ? "forex pair" : isCrypto ? "crypto pair" : "stock";
   return `
     <section class="search-panel">
-      <div>
-        <h3>Add ${assetName}</h3>
-        <p>${isForex ? "Search a currency pair such as EUR/USD or GBP/USD." : isCrypto ? "Search Bitcoin, Ethereum, XRP, or a pair such as BTC/USD." : "Search by company name or symbol. Choose the result before adding or trading."}</p>
-      </div>
       <form id="asset-search-form" class="search-form">
         <input id="asset-search-input" placeholder="${isForex ? "Search EUR/USD, GBP/USD..." : isCrypto ? "Search BTC/USD, ETH/USD, XRP/USD..." : "Search Apple, Tesla, NVDA..."}" autocomplete="off" />
         <button type="submit" title="Search ${assetName}">Search</button>
       </form>
-      <div class="popular-row">
-        <span>Popular to explore</span>
-        ${popular.map((symbol) => `<button type="button" data-search-symbol="${symbol}" title="Search ${symbol}">${symbol}</button>`).join("")}
-      </div>
       <div class="search-results">
         ${state.searchResults.map(renderSearchResult).join("")}
       </div>
@@ -1796,10 +1777,6 @@ document.addEventListener("click", (event) => {
   if (period) {
     state.chartPeriod = period.dataset.period;
     loadChart().then(render).catch((error) => setStatus(error.message, "warning"));
-  }
-  const popular = event.target.closest("[data-search-symbol]");
-  if (popular) {
-    searchAssets(popular.dataset.searchSymbol).catch((error) => setStatus(error.message, "warning"));
   }
 });
 

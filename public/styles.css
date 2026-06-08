@@ -574,37 +574,18 @@ h3 {
 
 .portfolio-action-zone {
   display: grid;
-  gap: 12px;
   margin-bottom: 18px;
   border: 1px solid rgba(238, 243, 245, 0.1);
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(98, 200, 221, 0.08), rgba(238, 243, 245, 0.035));
-  padding: 14px;
+  background: rgba(238, 243, 245, 0.035);
+  padding: 10px;
 }
 
 .portfolio-action-zone .search-panel {
   margin-bottom: 0;
   border: 0;
-  background: rgba(15, 18, 20, 0.34);
-  padding: 12px;
-}
-
-.action-zone-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.action-zone-head h3 {
-  margin-top: 2px;
-}
-
-.action-zone-head > span {
-  max-width: 360px;
-  color: var(--muted);
-  font-size: 0.82rem;
-  text-align: right;
+  background: transparent;
+  padding: 0;
 }
 
 .data-section {
@@ -629,27 +610,11 @@ h3 {
   gap: 8px;
 }
 
-.popular-row,
 .search-results {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-.popular-row span {
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 850;
-}
-
-.popular-row button {
-  border: 1px solid rgba(238, 243, 245, 0.1);
-  border-radius: 999px;
-  background: rgba(238, 243, 245, 0.04);
-  color: var(--text);
-  min-height: 30px;
-  padding: 0 10px;
 }
 
 .search-result {
@@ -1144,17 +1109,6 @@ pre {
 
   .summary-strip article:first-child {
     grid-column: 1 / -1;
-  }
-
-  .action-zone-head {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .action-zone-head > span {
-    max-width: none;
-    text-align: left;
   }
 
   .subnav {
