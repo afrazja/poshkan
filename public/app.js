@@ -850,7 +850,7 @@ function renderPortfolio() {
     <section class="summary-strip">
       <article><span>Total value</span><strong>${money(summary.totalValue)}</strong></article>
       <article><span>Cash</span><strong>${money(summary.cash)}</strong></article>
-      <article><span>Invested</span><strong>${money(summary.holdingsValue)}</strong></article>
+      <article><span>Basic invested</span><strong>${money(summary.invested)}</strong></article>
       <article><span>Today P/L</span><strong class="${summary.todayPnl >= 0 ? "positive" : "negative"}">${signedMoney(summary.todayPnl)}</strong></article>
       <article><span>Total P/L</span><strong class="${summary.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(summary.totalPnl)}</strong></article>
     </section>
