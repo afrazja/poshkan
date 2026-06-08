@@ -1265,6 +1265,19 @@ pre {
     min-width: 0;
   }
 
+  .compare-table .table-row > :first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #101418;
+    box-shadow: 10px 0 12px rgba(16, 20, 24, 0.8);
+  }
+
+  .compare-table .table-head > :first-child {
+    z-index: 4;
+    background: #171c20;
+  }
+
   .compare-table .stock-identity small {
     display: none;
   }
