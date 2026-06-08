@@ -993,8 +993,8 @@ function renderHoldingsTable(holdings, limit = Infinity) {
         ${sortLabel("holdings", "price", "Price")}
         ${sortLabel("holdings", "shares", "Shares")}
         ${sortLabel("holdings", "value", "Value")}
-        ${sortLabel("holdings", "dayPnl", "Today")}
-        ${sortLabel("holdings", "pnl", "Total P/L")}
+        ${sortLabel("holdings", "dayPnl", "Day %")}
+        ${sortLabel("holdings", "pnl", "P/L")}
       </div>
       ${rows.map(({ holding, stats, companyName }) => {
         return `

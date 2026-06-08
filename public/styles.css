@@ -1152,14 +1152,16 @@ pre {
   }
 
   .holdings-table .table-row {
-    grid-template-columns: minmax(78px, 1.05fr) minmax(58px, 0.62fr) minmax(78px, 0.78fr) minmax(86px, 0.9fr);
+    grid-template-columns: minmax(70px, 1fr) minmax(54px, 0.72fr) minmax(76px, 0.9fr) minmax(78px, 0.96fr);
     min-width: 0;
-    gap: 6px;
-    padding: 8px 9px;
+    gap: 8px;
+    padding: 9px 10px;
   }
 
   .holdings-table .table-head {
     display: grid;
+    align-items: center;
+    min-height: 34px;
   }
 
   .holdings-table .table-head > :nth-child(2),
@@ -1192,6 +1194,13 @@ pre {
     min-width: 0;
   }
 
+  .holdings-table .metric,
+  .holdings-table .table-head > :nth-child(4),
+  .holdings-table .table-head > :nth-child(5),
+  .holdings-table .table-head > :nth-child(6) {
+    text-align: right;
+  }
+
   .holdings-table .stock-identity small {
     display: none;
   }
@@ -1200,10 +1209,16 @@ pre {
   .holdings-table .metric,
   .holdings-table .table-head button {
     overflow: hidden;
-    font-size: 0.76rem;
-    line-height: 1.15;
+    font-size: 0.74rem;
+    line-height: 1.1;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .holdings-table .table-head button {
+    min-height: 0;
+    padding: 0;
+    font-size: 0.66rem;
   }
 
   .holdings-table .pnl-stack {
