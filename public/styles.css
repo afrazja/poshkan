@@ -1229,6 +1229,50 @@ pre {
     display: none;
   }
 
+  .compare-table {
+    display: block;
+    overflow-x: auto;
+    border: 1px solid rgba(238, 243, 245, 0.1);
+    border-radius: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .compare-table .table-head {
+    display: grid;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .compare-table .table-row {
+    grid-template-columns: 132px 86px 76px 92px 96px 76px 92px 104px 82px;
+    min-width: 836px;
+    gap: 10px;
+    border: 0;
+    border-bottom: 1px solid rgba(238, 243, 245, 0.08);
+    border-radius: 0;
+    padding: 9px 12px;
+  }
+
+  .compare-table .table-row:last-child {
+    border-bottom: 0;
+  }
+
+  .compare-table .stock-identity {
+    min-width: 0;
+  }
+
+  .compare-table .stock-identity small {
+    display: block;
+  }
+
+  .compare-table .table-head button {
+    min-height: 0;
+    padding: 0;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
   .trade-panel {
     position: static;
   }
