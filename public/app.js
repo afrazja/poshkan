@@ -15,7 +15,10 @@ const state = {
   session: null,
   user: null,
   page: "portfolios",
-  portfolioTab: "overview",
+  expandedPortfolioSections: {
+    holdings: false,
+    watchlist: false
+  },
   stockTab: "chart",
   authMode: "signin",
   portfolios: [],
@@ -440,7 +443,7 @@ async function createPortfolio(event) {
   elements.portfolioCash.value = STARTING_CASH;
   state.selectedPortfolioId = portfolio.id;
   state.page = "portfolio";
-  state.portfolioTab = "overview";
+  state.expandedPortfolioSections = { holdings: false, watchlist: false };
   await loadCloudData();
   await saveLastActivePortfolio();
   render();
@@ -750,7 +753,7 @@ function portfolioBackButton(label = "Back to portfolio") {
 function selectPortfolio(id) {
   state.selectedPortfolioId = id;
   state.page = "portfolio";
-  state.portfolioTab = "overview";
+  state.expandedPortfolioSections = { holdings: false, watchlist: false };
   saveLastActivePortfolio();
   render();
 }
@@ -860,45 +863,33 @@ function renderPortfolio() {
       <article><span>Today P/L</span><strong class="${summary.todayPnl >= 0 ? "positive" : "negative"}">${signedMoney(summary.todayPnl)}</strong></article>
       <article><span>Total P/L</span><strong class="${summary.totalPnl >= 0 ? "positive" : "negative"}">${signedMoney(summary.totalPnl)}</strong></article>
     </section>
-    <nav class="subnav">
-      ${["overview", "holdings", "watchlist", "history"].map((tab) => `<button type="button" class="${state.portfolioTab === tab ? "active" : ""}" data-portfolio-tab="${tab}">${tab}</button>`).join("")}
-    </nav>
-    ${renderPortfolioTab(portfolio)}
+    ${renderPortfolioContent(portfolio)}
   `;
 }
 
-function renderPortfolioTab(portfolio) {
+function renderPortfolioContent(portfolio) {
   const searchPanel = renderSearchPanel();
-  if (state.portfolioTab === "holdings") {
-    return `
-      ${renderPortfolioActionZone(searchPanel)}
-      ${renderDataSection("Holdings", `${portfolioHoldings(portfolio.id).length} positions`, renderHoldingsTable(portfolioHoldings(portfolio.id)))}
-    `;
-  }
-  if (state.portfolioTab === "watchlist") {
-    return `
-      ${renderPortfolioActionZone(searchPanel)}
-      ${renderDataSection("Watchlist", `${portfolioWatchlist(portfolio.id).length} symbols`, renderWatchlistTable(portfolioWatchlist(portfolio.id)))}
-    `;
-  }
-  if (state.portfolioTab === "history") return renderTradeHistory(portfolioTrades(portfolio.id), true);
+  const holdings = portfolioHoldings(portfolio.id);
+  const watchlist = portfolioWatchlist(portfolio.id);
+  const holdingsLimit = state.expandedPortfolioSections.holdings ? Infinity : 8;
+  const watchlistLimit = state.expandedPortfolioSections.watchlist ? Infinity : 8;
   return `
     ${renderPortfolioActionZone(searchPanel)}
     <section class="two-column">
       ${renderDataSection(
         "Holdings",
-        `${portfolioHoldings(portfolio.id).length} positions`,
+        `${holdings.length} positions`,
         `
-        ${renderHoldingsTable(portfolioHoldings(portfolio.id), 8)}
-        ${renderViewMore(portfolioHoldings(portfolio.id).length, "holdings")}
+        ${renderHoldingsTable(holdings, holdingsLimit)}
+        ${renderViewMore(holdings.length, "holdings")}
         `
       )}
       ${renderDataSection(
         "Watchlist",
-        `${portfolioWatchlist(portfolio.id).length} symbols`,
+        `${watchlist.length} symbols`,
         `
-        ${renderWatchlistTable(portfolioWatchlist(portfolio.id), 8)}
-        ${renderViewMore(portfolioWatchlist(portfolio.id).length, "watchlist")}
+        ${renderWatchlistTable(watchlist, watchlistLimit)}
+        ${renderViewMore(watchlist.length, "watchlist")}
         `
       )}
     </section>
@@ -936,9 +927,10 @@ function renderDataSection(title, meta, content) {
 
 function renderViewMore(total, tab) {
   if (total <= 8) return "";
+  const expanded = state.expandedPortfolioSections[tab];
   return `
     <div class="view-more-row">
-      <button type="button" data-portfolio-tab="${tab}">View more</button>
+      <button type="button" data-action="toggle-portfolio-section" data-section="${tab}">${expanded ? "Show less" : `View all ${total}`}</button>
     </div>
   `;
 }
@@ -1709,8 +1701,15 @@ document.addEventListener("click", async (event) => {
     if (act === "remove-watch") await deleteWatchlistSymbol(action.dataset.symbol);
     if (act === "back-to-portfolio") {
       state.page = activePortfolio() ? "portfolio" : "portfolios";
-      state.portfolioTab = "overview";
+      state.expandedPortfolioSections = { holdings: false, watchlist: false };
       render();
+    }
+    if (act === "toggle-portfolio-section") {
+      const section = action.dataset.section;
+      if (section === "holdings" || section === "watchlist") {
+        state.expandedPortfolioSections[section] = !state.expandedPortfolioSections[section];
+        render();
+      }
     }
     if (act === "refresh-performance") {
       await loadPerformance();
@@ -1792,11 +1791,6 @@ document.addEventListener("click", (event) => {
   if (side) {
     const form = side.closest(".trade-form");
     form.querySelectorAll("[data-side]").forEach((button) => button.classList.toggle("active", button === side));
-  }
-  const tab = event.target.closest("[data-portfolio-tab]");
-  if (tab) {
-    state.portfolioTab = tab.dataset.portfolioTab;
-    render();
   }
   const stockTab = event.target.closest("[data-stock-tab]");
   if (stockTab) {
