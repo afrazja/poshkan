@@ -1234,7 +1234,6 @@ pre {
     border: 1px solid rgba(238, 243, 245, 0.1);
     border-radius: 10px;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
   }
 
   .compare-table .table-head {
@@ -1254,7 +1253,6 @@ pre {
     border-radius: 0;
     padding: 0;
     white-space: nowrap;
-    touch-action: pan-x;
   }
 
   .compare-table .table-row:last-child {
