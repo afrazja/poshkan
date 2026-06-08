@@ -60,6 +60,10 @@ const elements = {
   accountName: document.querySelector("#account-name"),
   signOut: document.querySelector("#sign-out"),
   settingsButton: document.querySelector("#settings-button"),
+  avatarButton: document.querySelector("#user-avatar"),
+  avatarMenu: document.querySelector("#avatar-menu"),
+  changePassword: document.querySelector("#change-password"),
+  themeToggle: document.querySelector("#theme-toggle"),
   status: document.querySelector("#app-status"),
   navButtons: document.querySelectorAll("[data-nav]"),
   views: {
@@ -157,6 +161,30 @@ function escapeHtml(value) {
 function setStatus(message, type = "") {
   elements.status.textContent = friendlyError(message);
   elements.status.className = `app-status ${type}`.trim();
+}
+
+function initialsForUser(value) {
+  const source = String(value || "User").trim();
+  const name = source.includes("@") ? source.split("@")[0] : source;
+  const parts = name.split(/[\s._-]+/).filter(Boolean);
+  return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : name.slice(0, 2)).toUpperCase();
+}
+
+function setAvatarMenu(open) {
+  elements.avatarMenu.hidden = !open;
+  elements.avatarButton.setAttribute("aria-expanded", String(open));
+}
+
+function applyTheme(theme = localStorage.getItem("poshkan-theme") || "dark") {
+  const dark = theme !== "light";
+  document.body.classList.toggle("light-theme", !dark);
+  localStorage.setItem("poshkan-theme", dark ? "dark" : "light");
+  elements.themeToggle.textContent = dark ? "Dark mode on" : "Dark mode off";
+}
+
+function updateAccountControls() {
+  const label = elements.accountName.textContent || state.session?.user?.email || "User";
+  elements.avatarButton.textContent = initialsForUser(label);
 }
 
 function friendlyError(message) {
@@ -353,6 +381,7 @@ async function loadCloudData() {
     ? preferred
     : state.portfolios[0]?.id || null;
   elements.accountName.textContent = profile?.display_name || state.session.user.email || "Account";
+  updateAccountControls();
   await Promise.all(
     state.portfolios.map((portfolio) => loadQuotes(allSymbols(portfolio.id), assetTypeForPortfolio(portfolio)))
   );
@@ -1587,6 +1616,7 @@ async function handleAuth(event) {
 
 async function signOut() {
   const client = state.supabase;
+  setAvatarMenu(false);
   state.session = null;
   state.user = null;
   state.portfolios = [];
@@ -1595,8 +1625,23 @@ async function signOut() {
   await client.auth.signOut();
 }
 
+async function requestPasswordChange() {
+  const email = state.session?.user?.email;
+  if (!email) {
+    setStatus("Sign in again before changing your password.", "warning");
+    return;
+  }
+  const { error } = await state.supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin
+  });
+  if (error) throw error;
+  setAvatarMenu(false);
+  setStatus(`Password change link sent to ${email}.`, "success");
+}
+
 async function boot() {
   try {
+    applyTheme();
     await loadConfig();
     const { data } = await state.supabase.auth.getSession();
     state.session = data.session;
@@ -1633,13 +1678,26 @@ elements.authModeButtons.forEach((button) => {
 
 elements.authForm.addEventListener("submit", handleAuth);
 elements.signOut.addEventListener("click", signOut);
+elements.avatarButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setAvatarMenu(elements.avatarMenu.hidden);
+});
+elements.changePassword.addEventListener("click", () => {
+  requestPasswordChange().catch((error) => setStatus(error.message, "warning"));
+});
+elements.themeToggle.addEventListener("click", () => {
+  const nextTheme = document.body.classList.contains("light-theme") ? "dark" : "light";
+  applyTheme(nextTheme);
+});
 elements.settingsButton.addEventListener("click", async () => {
+  setAvatarMenu(false);
   state.page = "settings";
   await loadApiKeys();
   render();
 });
 
 document.addEventListener("click", async (event) => {
+  if (!event.target.closest(".account-menu")) setAvatarMenu(false);
   const nav = event.target.closest("[data-nav]");
   if (nav) {
     const target = nav.dataset.nav;
