@@ -845,15 +845,8 @@ function renderPortfolio() {
   view.innerHTML = `
     <div class="page-head portfolio-context">
       <div>
-        <button class="text-link" type="button" data-nav="portfolios">All portfolios</button>
         <p class="eyebrow">${assetLabel(portfolio.account_type)}</p>
         <h2>${escapeHtml(portfolio.name)}</h2>
-      </div>
-      <div class="portfolio-actions">
-        <button type="button" data-action="export-portfolio" title="Download current holdings as an Excel file">Export Excel</button>
-        <select id="portfolio-switcher" title="Switch active portfolio">
-          ${state.portfolios.map((item) => `<option value="${item.id}" ${item.id === portfolio.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
-        </select>
       </div>
     </div>
     <section class="summary-strip">
@@ -1455,6 +1448,7 @@ function renderCompare() {
           </select>
         </label>
         <button type="submit">Update</button>
+        <button type="button" data-action="export-portfolio" title="Download current holdings as an Excel file">Export Excel</button>
       </form>
     </div>
     <div class="data-table compare-table">
@@ -1810,9 +1804,6 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("change", async (event) => {
-  if (event.target.id === "portfolio-switcher") {
-    selectPortfolio(event.target.value);
-  }
   const aiField = event.target.dataset.aiField;
   if (aiField) {
     const value = event.target.type === "checkbox" ? event.target.checked : Number(event.target.value);

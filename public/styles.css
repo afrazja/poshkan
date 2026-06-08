@@ -400,13 +400,6 @@ h3 {
   justify-content: flex-end;
 }
 
-.portfolio-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 #account-name {
   max-width: 230px;
   overflow: hidden;
@@ -1139,7 +1132,6 @@ pre {
   }
 
   .account-menu,
-  .portfolio-actions,
   .page-head,
   .chart-head {
     align-items: stretch;
