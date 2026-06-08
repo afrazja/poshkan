@@ -1145,6 +1145,75 @@ pre {
     content: none;
   }
 
+  .holdings-table {
+    display: grid;
+    gap: 0;
+    overflow-x: visible;
+  }
+
+  .holdings-table .table-row {
+    grid-template-columns: minmax(78px, 1.05fr) minmax(58px, 0.62fr) minmax(78px, 0.78fr) minmax(86px, 0.9fr);
+    min-width: 0;
+    gap: 6px;
+    padding: 8px 9px;
+  }
+
+  .holdings-table .table-head {
+    display: grid;
+  }
+
+  .holdings-table .table-head > :nth-child(2),
+  .holdings-table .table-head > :nth-child(3),
+  .holdings-table .metric[data-label="Price"],
+  .holdings-table .metric[data-label="Shares"] {
+    display: none;
+  }
+
+  .holdings-table .table-head > :nth-child(1) {
+    grid-column: 1;
+  }
+
+  .holdings-table .table-head > :nth-child(4),
+  .holdings-table .metric[data-label="Value"] {
+    grid-column: 3;
+  }
+
+  .holdings-table .table-head > :nth-child(5),
+  .holdings-table .metric[data-label="Today"] {
+    grid-column: 2;
+  }
+
+  .holdings-table .table-head > :nth-child(6),
+  .holdings-table .metric[data-label="Total P/L"] {
+    grid-column: 4;
+  }
+
+  .holdings-table .stock-identity {
+    min-width: 0;
+  }
+
+  .holdings-table .stock-identity small {
+    display: none;
+  }
+
+  .holdings-table .stock-identity strong,
+  .holdings-table .metric,
+  .holdings-table .table-head button {
+    overflow: hidden;
+    font-size: 0.76rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .holdings-table .pnl-stack {
+    display: block;
+  }
+
+  .holdings-table .pnl-stack small {
+    display: none;
+  }
+
   .trade-panel {
     position: static;
   }

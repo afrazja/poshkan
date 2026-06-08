@@ -980,7 +980,7 @@ function renderHoldingsTable(holdings, limit = Infinity) {
       if (column === "price") return row.stats.price;
       if (column === "shares") return row.stats.quantity;
       if (column === "value") return row.stats.value;
-      if (column === "dayPnl") return row.stats.dayPnl;
+      if (column === "dayPnl") return Number(row.stats.quote?.regularMarketChangePercent) || 0;
       if (column === "pnl") return row.stats.totalPnl;
       if (column === "pnlPercent") return row.stats.totalPnlPercent;
       return row.holding.symbol;
@@ -1003,7 +1003,7 @@ function renderHoldingsTable(holdings, limit = Infinity) {
             <span class="metric" data-label="Price">${money(stats.price)}</span>
             <span class="metric" data-label="Shares">${number(stats.quantity)}</span>
             <span class="metric" data-label="Value">${money(stats.value)}</span>
-            <span class="metric ${stats.dayPnl >= 0 ? "positive" : "negative"}" data-label="Today">${signedMoney(stats.dayPnl)}</span>
+            <span class="metric ${Number(stats.quote?.regularMarketChangePercent) >= 0 ? "positive" : "negative"}" data-label="Today">${signedPercent(stats.quote?.regularMarketChangePercent)}</span>
             <span class="metric pnl-stack ${stats.totalPnl >= 0 ? "positive" : "negative"}" data-label="Total P/L"><strong>${signedMoney(stats.totalPnl)}</strong><small>${signedPercent(stats.totalPnlPercent)}</small></span>
           </button>
         `;
