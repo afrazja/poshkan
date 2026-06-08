@@ -654,6 +654,10 @@ body.light-theme .avatar-menu {
   padding: 0;
 }
 
+.portfolio-list-tabs {
+  margin: 0 0 14px;
+}
+
 .data-section {
   min-width: 0;
   margin-bottom: 16px;
@@ -1180,11 +1184,6 @@ pre {
 
   #account-name {
     display: none;
-  }
-
-  #settings-button {
-    min-height: 36px;
-    padding: 0 9px;
   }
 
   .avatar-button {

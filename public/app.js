@@ -16,6 +16,7 @@ const state = {
     holdings: false,
     watchlist: false
   },
+  portfolioListTab: "holdings",
   stockTab: "chart",
   authMode: "signin",
   portfolios: [],
@@ -59,7 +60,6 @@ const elements = {
   appShell: document.querySelector("#app-shell"),
   accountName: document.querySelector("#account-name"),
   signOut: document.querySelector("#sign-out"),
-  settingsButton: document.querySelector("#settings-button"),
   avatarButton: document.querySelector("#user-avatar"),
   avatarMenu: document.querySelector("#avatar-menu"),
   changePassword: document.querySelector("#change-password"),
@@ -470,6 +470,7 @@ async function createPortfolio(event) {
   state.selectedPortfolioId = portfolio.id;
   state.page = "portfolio";
   state.expandedPortfolioSections = { holdings: false, watchlist: false };
+  state.portfolioListTab = "holdings";
   await loadCloudData();
   await saveLastActivePortfolio();
   render();
@@ -780,6 +781,7 @@ function selectPortfolio(id) {
   state.selectedPortfolioId = id;
   state.page = "portfolio";
   state.expandedPortfolioSections = { holdings: false, watchlist: false };
+  state.portfolioListTab = "holdings";
   saveLastActivePortfolio();
   render();
 }
@@ -892,26 +894,31 @@ function renderPortfolioContent(portfolio) {
   const watchlist = portfolioWatchlist(portfolio.id);
   const holdingsLimit = state.expandedPortfolioSections.holdings ? Infinity : 8;
   const watchlistLimit = state.expandedPortfolioSections.watchlist ? Infinity : 8;
-  return `
-    ${renderPortfolioActionZone(searchPanel)}
-    <section class="two-column">
-      ${renderDataSection(
-        "Holdings",
-        `${holdings.length} positions`,
-        `
+  const showingHoldings = state.portfolioListTab !== "watchlist";
+  const activeTitle = showingHoldings ? "Holdings" : "Watchlist";
+  const activeMeta = showingHoldings ? `${holdings.length} positions` : `${watchlist.length} symbols`;
+  const activeContent = showingHoldings
+    ? `
         ${renderHoldingsTable(holdings, holdingsLimit)}
         ${renderViewMore(holdings.length, "holdings")}
-        `
-      )}
-      ${renderDataSection(
-        "Watchlist",
-        `${watchlist.length} symbols`,
-        `
+      `
+    : `
         ${renderWatchlistTable(watchlist, watchlistLimit)}
         ${renderViewMore(watchlist.length, "watchlist")}
-        `
-      )}
-    </section>
+      `;
+  return `
+    ${renderPortfolioActionZone(searchPanel)}
+    ${renderPortfolioListTabs(holdings.length, watchlist.length)}
+    ${renderDataSection(activeTitle, activeMeta, activeContent)}
+  `;
+}
+
+function renderPortfolioListTabs(holdingsCount, watchlistCount) {
+  return `
+    <nav class="portfolio-list-tabs subnav" aria-label="Portfolio lists">
+      <button type="button" class="${state.portfolioListTab === "holdings" ? "active" : ""}" data-portfolio-list="holdings">Holdings ${holdingsCount}</button>
+      <button type="button" class="${state.portfolioListTab === "watchlist" ? "active" : ""}" data-portfolio-list="watchlist">Watchlist ${watchlistCount}</button>
+    </nav>
   `;
 }
 
@@ -1689,13 +1696,6 @@ elements.themeToggle.addEventListener("click", () => {
   const nextTheme = document.body.classList.contains("light-theme") ? "dark" : "light";
   applyTheme(nextTheme);
 });
-elements.settingsButton.addEventListener("click", async () => {
-  setAvatarMenu(false);
-  state.page = "settings";
-  await loadApiKeys();
-  render();
-});
-
 document.addEventListener("click", async (event) => {
   if (!event.target.closest(".account-menu")) setAvatarMenu(false);
   const nav = event.target.closest("[data-nav]");
@@ -1816,6 +1816,13 @@ document.addEventListener("click", (event) => {
       state.compareSort = column;
       state.compareDirection = column === "symbol" ? "asc" : "desc";
     }
+    render();
+    return;
+  }
+
+  const portfolioList = event.target.closest("[data-portfolio-list]");
+  if (portfolioList) {
+    state.portfolioListTab = portfolioList.dataset.portfolioList === "watchlist" ? "watchlist" : "holdings";
     render();
     return;
   }
