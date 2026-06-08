@@ -869,22 +869,67 @@ function renderPortfolio() {
 
 function renderPortfolioTab(portfolio) {
   const searchPanel = renderSearchPanel();
-  if (state.portfolioTab === "holdings") return `${searchPanel}${renderHoldingsTable(portfolioHoldings(portfolio.id))}`;
-  if (state.portfolioTab === "watchlist") return `${searchPanel}${renderWatchlistTable(portfolioWatchlist(portfolio.id))}`;
+  if (state.portfolioTab === "holdings") {
+    return `
+      ${renderPortfolioActionZone(searchPanel)}
+      ${renderDataSection("Holdings", `${portfolioHoldings(portfolio.id).length} positions`, renderHoldingsTable(portfolioHoldings(portfolio.id)))}
+    `;
+  }
+  if (state.portfolioTab === "watchlist") {
+    return `
+      ${renderPortfolioActionZone(searchPanel)}
+      ${renderDataSection("Watchlist", `${portfolioWatchlist(portfolio.id).length} symbols`, renderWatchlistTable(portfolioWatchlist(portfolio.id)))}
+    `;
+  }
   if (state.portfolioTab === "history") return renderTradeHistory(portfolioTrades(portfolio.id), true);
   return `
-    ${searchPanel}
+    ${renderPortfolioActionZone(searchPanel)}
     <section class="two-column">
-      <div>
-        <div class="section-title"><h3>Holdings</h3></div>
+      ${renderDataSection(
+        "Holdings",
+        `${portfolioHoldings(portfolio.id).length} positions`,
+        `
         ${renderHoldingsTable(portfolioHoldings(portfolio.id), 8)}
         ${renderViewMore(portfolioHoldings(portfolio.id).length, "holdings")}
-      </div>
-      <div>
-        <div class="section-title"><h3>Watchlist</h3></div>
+        `
+      )}
+      ${renderDataSection(
+        "Watchlist",
+        `${portfolioWatchlist(portfolio.id).length} symbols`,
+        `
         ${renderWatchlistTable(portfolioWatchlist(portfolio.id), 8)}
         ${renderViewMore(portfolioWatchlist(portfolio.id).length, "watchlist")}
+        `
+      )}
+    </section>
+  `;
+}
+
+function renderPortfolioActionZone(content) {
+  return `
+    <section class="portfolio-action-zone">
+      <div class="action-zone-head">
+        <div>
+          <p class="eyebrow">Actions</p>
+          <h3>Add or research</h3>
+        </div>
+        <span>Search, add to watchlist, or start a paper trade.</span>
       </div>
+      ${content}
+    </section>
+  `;
+}
+
+function renderDataSection(title, meta, content) {
+  return `
+    <section class="data-section">
+      <div class="section-title">
+        <div>
+          <h3>${title}</h3>
+          <span>${meta}</span>
+        </div>
+      </div>
+      ${content}
     </section>
   `;
 }
