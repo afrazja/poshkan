@@ -1433,7 +1433,7 @@ function renderCompare() {
   view.innerHTML = `
     ${portfolioBackButton()}
     <div class="page-head">
-      <div><p class="eyebrow">Compare</p><h2>${escapeHtml(portfolio.name)}</h2><span>Holdings and watchlist performance for the active portfolio.</span></div>
+      <div><p class="eyebrow">Excel</p><h2>${escapeHtml(portfolio.name)}</h2><span>Holdings and watchlist performance in a sortable table.</span></div>
       <form class="compare-controls" id="compare-period-form">
         <label>
           <span>Period</span>
