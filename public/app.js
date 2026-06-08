@@ -736,8 +736,12 @@ async function updateAiSetting(portfolioId, patch) {
 }
 
 function navigate(page) {
-  state.page = page;
-  if (page === "portfolio" && !activePortfolio()) state.page = "portfolios";
+  if (page === "portfolio") {
+    state.page = activePortfolio() ? "portfolio" : "portfolios";
+    state.portfolioTab = "overview";
+  } else {
+    state.page = page;
+  }
   render();
 }
 
@@ -760,7 +764,10 @@ function render() {
   });
   elements.navButtons.forEach((button) => {
     const target = button.dataset.nav;
-    button.classList.toggle("active", target === state.page || (target === "portfolios" && state.page === "portfolio"));
+    button.classList.toggle(
+      "active",
+      target === state.page || (target === "portfolio" && ["portfolio", "stock"].includes(state.page))
+    );
   });
 
   renderPortfolios();
@@ -1623,7 +1630,10 @@ document.addEventListener("click", async (event) => {
   const nav = event.target.closest("[data-nav]");
   if (nav) {
     const target = nav.dataset.nav;
-    if (target === "portfolios") state.page = "portfolios";
+    if (target === "portfolio") {
+      state.page = activePortfolio() ? "portfolio" : "portfolios";
+      state.portfolioTab = "overview";
+    } else if (target === "portfolios") state.page = "portfolios";
     else state.page = target;
     if (target === "compare") await loadPerformance().catch((error) => setStatus(error.message, "warning"));
     if (target === "ai" || target === "settings") await loadApiKeys();
