@@ -1247,11 +1247,13 @@ pre {
   .compare-table .table-row {
     grid-template-columns: 132px 86px 76px 92px 96px 76px 92px 104px 82px;
     min-width: 836px;
+    min-height: 40px;
     gap: 10px;
     border: 0;
     border-bottom: 1px solid rgba(238, 243, 245, 0.08);
     border-radius: 0;
-    padding: 9px 12px;
+    padding: 7px 10px;
+    white-space: nowrap;
   }
 
   .compare-table .table-row:last-child {
@@ -1259,11 +1261,24 @@ pre {
   }
 
   .compare-table .stock-identity {
+    display: block;
     min-width: 0;
   }
 
   .compare-table .stock-identity small {
-    display: block;
+    display: none;
+  }
+
+  .compare-table .table-row > span,
+  .compare-table .stock-identity strong {
+    overflow: hidden;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .compare-table .table-row:not(.table-head) small {
+    display: none;
   }
 
   .compare-table .table-head button {
