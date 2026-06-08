@@ -1025,7 +1025,6 @@ pre {
   .search-result,
   .table-row,
   .watchlist-table .table-row,
-  .compare-table .table-row,
   .trade-row {
     grid-template-columns: 1fr;
   }
@@ -1235,6 +1234,7 @@ pre {
     border: 1px solid rgba(238, 243, 245, 0.1);
     border-radius: 10px;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
   }
 
   .compare-table .table-head {
@@ -1245,37 +1245,55 @@ pre {
   }
 
   .compare-table .table-row {
-    grid-template-columns: 132px 86px 76px 92px 96px 76px 92px 104px 82px;
-    min-width: 836px;
+    grid-template-columns: 76px 86px 76px 92px 96px 76px 92px 104px 82px;
+    min-width: 780px;
     min-height: 40px;
-    gap: 10px;
+    gap: 0;
     border: 0;
     border-bottom: 1px solid rgba(238, 243, 245, 0.08);
     border-radius: 0;
-    padding: 7px 10px;
+    padding: 0;
     white-space: nowrap;
+    touch-action: pan-x;
   }
 
   .compare-table .table-row:last-child {
     border-bottom: 0;
   }
 
+  .compare-table button.table-row {
+    appearance: none;
+    background: rgba(15, 18, 20, 0.32);
+  }
+
+  .compare-table button.table-row:hover,
+  .compare-table button.table-row:focus-visible {
+    background: rgba(98, 200, 221, 0.08);
+  }
+
   .compare-table .stock-identity {
-    display: block;
+    display: grid;
     min-width: 0;
+  }
+
+  .compare-table .table-row > * {
+    display: flex;
+    min-width: 0;
+    min-height: 40px;
+    align-items: center;
+    padding: 7px 8px;
   }
 
   .compare-table .table-row > :first-child {
     position: sticky;
     left: 0;
     z-index: 2;
-    background: #101418;
-    box-shadow: 10px 0 12px rgba(16, 20, 24, 0.8);
+    background: rgba(15, 18, 20, 0.32);
   }
 
   .compare-table .table-head > :first-child {
     z-index: 4;
-    background: #171c20;
+    background: rgba(23, 28, 32, 0.9);
   }
 
   .compare-table .stock-identity small {
